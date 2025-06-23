@@ -1,0 +1,370 @@
+"use client"
+
+import type React from "react"
+
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { CITIES, KHAKHRA_TYPES, PATRA_PRICE_MIN, PATRA_PRICE_MAX, supabase } from "@/lib/supabase"
+import { Plus, X, IndianRupee } from "lucide-react"
+import { useState } from "react"
+import { useToast } from "@/hooks/use-toast"
+
+interface KhakhraItem {
+  type: string
+  quantity: number
+  price: number
+}
+
+interface NewOrderDialogProps {
+  trigger: React.ReactNode
+  onOrderCreated: () => void
+}
+
+export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps) {
+  const { toast } = useToast()
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [shopName, setShopName] = useState("")
+  const [address, setAddress] = useState("")
+  const [city, setCity] = useState("")
+  const [khakhraItems, setKhakhraItems] = useState<KhakhraItem[]>([{ type: "", quantity: 0, price: 200 }])
+  const [wantsPatra, setWantsPatra] = useState(false)
+  const [patraPackets, setPatraPackets] = useState(0)
+  const [patraPrice, setPatraPrice] = useState(80)
+
+  const addKhakhraItem = () => {
+    setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200 }])
+  }
+
+  const removeKhakhraItem = (index: number) => {
+    if (khakhraItems.length > 1) {
+      setKhakhraItems(khakhraItems.filter((_, i) => i !== index))
+    }
+  }
+
+  const updateKhakhraItem = (index: number, field: keyof KhakhraItem, value: string | number) => {
+    const updated = [...khakhraItems]
+
+    if (field === "type") {
+      const selectedType = KHAKHRA_TYPES.find((t) => t.name === value)
+      updated[index] = {
+        ...updated[index],
+        [field]: value,
+        price: selectedType?.price || 200,
+      }
+    } else {
+      updated[index] = { ...updated[index], [field]: value }
+    }
+
+    setKhakhraItems(updated)
+  }
+
+  const calculateTotal = () => {
+    const khakhraTotal = khakhraItems.reduce((sum, item) => {
+      if (item.type && item.quantity > 0) {
+        return sum + item.quantity * item.price
+      }
+      return sum
+    }, 0)
+
+    const patraTotal = wantsPatra ? patraPackets * (patraPrice || 80) : 0
+    return khakhraTotal + patraTotal
+  }
+
+  const resetForm = () => {
+    setShopName("")
+    setAddress("")
+    setCity("")
+    setKhakhraItems([{ type: "", quantity: 0, price: 200 }])
+    setWantsPatra(false)
+    setPatraPackets(0)
+    setPatraPrice(80) // Always reset to 80
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      // Validate form
+      if (!shopName || !address || !city) {
+        toast({
+          title: "Error",
+          description: "Please fill in all required fields",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const validKhakhraItems = khakhraItems.filter((item) => item.type && item.quantity > 0)
+
+      // Check if order has either Khakhra items OR Patra
+      if (validKhakhraItems.length === 0 && !wantsPatra) {
+        toast({
+          title: "Error",
+          description: "Please add at least one Khakhra item or select Patra",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // If only Patra is selected, validate Patra quantity
+      if (wantsPatra && patraPackets <= 0) {
+        toast({
+          title: "Error",
+          description: "Please specify the number of Patra packets",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const totalKhakhraKg = validKhakhraItems.reduce((sum, item) => sum + item.quantity, 0)
+      const totalAmount = calculateTotal()
+
+      // Prepare insert object - only include patra_price_per_packet if the column exists
+      const insertData: any = {
+        shop_name: shopName,
+        address,
+        city,
+        wants_patra: wantsPatra,
+        patra_packets: wantsPatra ? patraPackets : 0,
+        total_khakhra_kg: totalKhakhraKg,
+        total_amount: totalAmount,
+        status: "pending",
+      }
+
+      // Try to include patra_price_per_packet, but handle gracefully if column doesn't exist
+      try {
+        insertData.patra_price_per_packet = patraPrice || 80
+      } catch (error) {
+        console.log("patra_price_per_packet column not available yet")
+      }
+
+      // Insert order
+      const { data: order, error: orderError } = await supabase.from("orders").insert(insertData).select().single()
+
+      if (orderError) throw orderError
+
+      // Insert khakhra items only if there are valid items
+      if (validKhakhraItems.length > 0) {
+        const khakhraItemsToInsert = validKhakhraItems.map((item) => ({
+          order_id: order.id,
+          khakhra_type: item.type,
+          quantity_kg: item.quantity,
+          price_per_kg: item.price,
+          total_price: item.quantity * item.price,
+        }))
+
+        const { error: itemsError } = await supabase.from("khakhra_items").insert(khakhraItemsToInsert)
+
+        if (itemsError) throw itemsError
+      }
+
+      // Success message based on order type
+      let orderType = ""
+      if (validKhakhraItems.length > 0 && wantsPatra) {
+        orderType = "Khakhra & Patra"
+      } else if (validKhakhraItems.length > 0) {
+        orderType = "Khakhra"
+      } else {
+        orderType = "Patra"
+      }
+
+      toast({
+        title: "Success",
+        description: `${orderType} order created successfully! Total: ₹${totalAmount}`,
+      })
+      resetForm()
+      setOpen(false)
+      onOrderCreated()
+    } catch (error) {
+      console.error("Error creating order:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create order. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create New Order</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Customer Details */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Customer Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="shopName">Shop Name *</Label>
+                <Input
+                  id="shopName"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  placeholder="Enter shop name"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="city">City *</Label>
+                <Select value={city} onValueChange={setCity} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select city" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CITIES.map((cityOption) => (
+                      <SelectItem key={cityOption} value={cityOption}>
+                        {cityOption}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address">Address *</Label>
+              <Textarea
+                id="address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Enter complete address"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Patra Option - Moved up for better UX */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Patra Option</h3>
+            <div className="flex items-center space-x-2">
+              <Switch id="wantsPatra" checked={wantsPatra} onCheckedChange={setWantsPatra} />
+              <Label htmlFor="wantsPatra">
+                Customer wants Patra (₹{PATRA_PRICE_MIN}-₹{PATRA_PRICE_MAX} per packet)
+              </Label>
+            </div>
+            {wantsPatra && (
+              <div className="flex items-end gap-2">
+                <div className="w-32 space-y-2">
+                  <Label htmlFor="patraPackets">Number of packets *</Label>
+                  <Input
+                    id="patraPackets"
+                    type="number"
+                    min="1"
+                    value={patraPackets}
+                    onChange={(e) => setPatraPackets(Number.parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    required={wantsPatra}
+                  />
+                </div>
+                <div className="w-24 space-y-2">
+                  <Label htmlFor="patraPrice">Price per packet</Label>
+                  <Input
+                    id="patraPrice"
+                    type="number"
+                    min={PATRA_PRICE_MIN}
+                    max={PATRA_PRICE_MAX}
+                    value={patraPrice}
+                    onChange={(e) => setPatraPrice(Number.parseInt(e.target.value) || 80)}
+                    placeholder="80"
+                  />
+                </div>
+                <div className="w-20 space-y-2">
+                  <Label>Total</Label>
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
+                    ₹{patraPackets * patraPrice}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Khakhra Selection - Made optional */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">Khakhra Selection (Optional)</h3>
+              <Button type="button" onClick={addKhakhraItem} size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                Add Item
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Add Khakhra items if customer wants them, or leave empty for Patra-only orders
+            </p>
+            {khakhraItems.map((item, index) => (
+              <div key={index} className="flex items-end gap-2 p-3 border rounded-lg">
+                <div className="flex-1 space-y-2">
+                  <Label>Khakhra Type</Label>
+                  <Select value={item.type} onValueChange={(value) => updateKhakhraItem(index, "type", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select khakhra type (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KHAKHRA_TYPES.map((type) => (
+                        <SelectItem key={type.name} value={type.name}>
+                          {type.name} - ₹{type.price}/kg
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-24 space-y-2">
+                  <Label>Quantity (kg)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={item.quantity}
+                    onChange={(e) => updateKhakhraItem(index, "quantity", Number.parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="w-20 space-y-2">
+                  <Label>Total</Label>
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
+                    ₹{item.quantity > 0 && item.type ? (item.quantity * item.price).toFixed(0) : "0"}
+                  </div>
+                </div>
+                {khakhraItems.length > 1 && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => removeKhakhraItem(index)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Order Total */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between text-lg font-semibold">
+              <span>Order Total:</span>
+              <div className="flex items-center gap-1">
+                <IndianRupee className="h-4 w-4" />
+                <span>{calculateTotal()}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Creating..." : "Create Order"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
