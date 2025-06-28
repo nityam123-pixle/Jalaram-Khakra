@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Khakhra Orders - Order Management System",
-  description: "Modern order management system for Khakhra and Patra business",
+  description: "Modern order management system for Khakhra and Patra business for my father by - Nityam Suchak",
 }
 
 export default function RootLayout({
