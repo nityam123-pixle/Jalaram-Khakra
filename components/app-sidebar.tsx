@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, Package, Plus, Settings, ShoppingCart } from "lucide-react"
+import { Home, Package, Settings, ShoppingCart, BarChart3 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
@@ -26,6 +26,11 @@ const menuItems = [
     title: "All Orders",
     url: "/orders",
     icon: ShoppingCart,
+  },
+  {
+    title: "Summary",
+    url: "/summary",
+    icon: BarChart3,
   },
   {
     title: "Products",

@@ -101,7 +101,10 @@ export function OrderCard({ order, onStatusChange, onEdit, onDelete }: OrderCard
             <div className="flex flex-wrap gap-1">
               {order.khakhra_items.map((item) => (
                 <Badge key={item.id} variant="outline" className="text-xs">
-                  {item.khakhra_type}: {item.quantity_kg}kg @ ₹{item.price_per_kg}
+                  {item.khakhra_type}:{" "}
+                  {item.is_packet_item
+                    ? `${item.packet_quantity} packets @ ₹${item.price_per_packet}`
+                    : `${item.quantity_kg}kg @ ₹${item.price_per_kg}`}
                 </Badge>
               ))}
             </div>

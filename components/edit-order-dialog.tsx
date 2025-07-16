@@ -19,6 +19,9 @@ interface KhakhraItem {
   type: string
   quantity: number
   price: number
+  sellBy: "kg" | "packet"
+  packetQuantity?: number
+  packetPrice?: number
 }
 
 interface EditOrderDialogProps {
@@ -34,7 +37,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
   const [shopName, setShopName] = useState("")
   const [address, setAddress] = useState("")
   const [city, setCity] = useState("")
-  const [khakhraItems, setKhakhraItems] = useState<KhakhraItem[]>([{ type: "", quantity: 0, price: 200 }])
+  const [khakhraItems, setKhakhraItems] = useState<KhakhraItem[]>([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
   const [wantsPatra, setWantsPatra] = useState(false)
   const [patraPackets, setPatraPackets] = useState(0)
   const [patraPrice, setPatraPrice] = useState(80)
@@ -57,16 +60,19 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
             type: item.khakhra_type,
             quantity: item.quantity_kg,
             price: item.price_per_kg,
+            sellBy: item.is_packet_item ? "packet" : "kg",
+            packetQuantity: item.packet_quantity || 0,
+            packetPrice: item.price_per_packet || 0,
           })),
         )
       } else {
-        setKhakhraItems([{ type: "", quantity: 0, price: 200 }])
+        setKhakhraItems([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
       }
     }
   }, [order])
 
   const addKhakhraItem = () => {
-    setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200 }])
+    setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200, sellBy: "kg" }])
   }
 
   const removeKhakhraItem = (index: number) => {
@@ -75,30 +81,36 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
     }
   }
 
-  const updateKhakhraItem = (index: number, field: keyof KhakhraItem, value: string | number) => {
+  const updateKhakhraItem = (index: number, field: keyof KhakhraItem, value: string | number | boolean) => {
     const updated = [...khakhraItems]
+    const currentItem = updated[index]
 
     if (field === "type") {
       const selectedType = KHAKHRA_TYPES.find((t) => t.name === value)
       updated[index] = {
-        ...updated[index],
-        [field]: value,
+        ...currentItem,
+        type: value as string,
         price: selectedType?.price || 200,
       }
     } else {
-      updated[index] = { ...updated[index], [field]: value }
+      updated[index] = { ...currentItem, [field]: value }
     }
 
     setKhakhraItems(updated)
   }
 
   const calculateTotal = () => {
-    const khakhraTotal = khakhraItems.reduce((sum, item) => {
+    let khakhraTotal = 0
+
+    khakhraItems.forEach((item) => {
       if (item.type && item.quantity > 0) {
-        return sum + item.quantity * item.price
+        if (item.sellBy === "kg") {
+          khakhraTotal += item.quantity * item.price
+        } else if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
+          khakhraTotal += item.packetQuantity * item.packetPrice
+        }
       }
-      return sum
-    }, 0)
+    })
 
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || 80) : 0
     return khakhraTotal + patraTotal
@@ -176,13 +188,30 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
 
       // Insert updated khakhra items only if there are valid items
       if (validKhakhraItems.length > 0) {
-        const khakhraItemsToInsert = validKhakhraItems.map((item) => ({
-          order_id: order.id,
-          khakhra_type: item.type,
-          quantity_kg: item.quantity,
-          price_per_kg: item.price,
-          total_price: item.quantity * item.price,
-        }))
+        const khakhraItemsToInsert = validKhakhraItems.map((item) => {
+          const baseItem = {
+            order_id: order.id,
+            khakhra_type: item.type,
+            quantity_kg: item.quantity,
+            price_per_kg: item.price,
+          }
+
+          if (item.sellBy === "kg") {
+            return {
+              ...baseItem,
+              total_price: item.quantity * item.price,
+              is_packet_item: false,
+            }
+          } else {
+            return {
+              ...baseItem,
+              is_packet_item: true,
+              packet_quantity: item.packetQuantity,
+              price_per_packet: item.packetPrice,
+              total_price: item.packetQuantity! * item.packetPrice!,
+            }
+          }
+        })
 
         const { error: itemsError } = await supabase.from("khakhra_items").insert(khakhraItemsToInsert)
 
@@ -332,21 +361,74 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="w-24 space-y-2">
-                  <Label>Quantity (kg)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={item.quantity}
-                    onChange={(e) => updateKhakhraItem(index, "quantity", Number.parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                  />
+
+                <div className="space-y-2">
+                  <Label>Sell By</Label>
+                  <Select value={item.sellBy} onValueChange={(value) => updateKhakhraItem(index, "sellBy", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="kg">Per Kg</SelectItem>
+                      <SelectItem value="packet">Per Packet</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {item.sellBy === "kg" ? (
+                  <div className="w-24 space-y-2">
+                    <Label>Quantity (kg)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={item.quantity}
+                      onChange={(e) => updateKhakhraItem(index, "quantity", Number.parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-24 space-y-2">
+                      <Label>No. of Packets</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={item.packetQuantity}
+                        onChange={(e) =>
+                          updateKhakhraItem(index, "packetQuantity", Number.parseFloat(e.target.value) || 0)
+                        }
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="w-24 space-y-2">
+                      <Label>Price per packet</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={item.packetPrice}
+                        onChange={(e) =>
+                          updateKhakhraItem(index, "packetPrice", Number.parseFloat(e.target.value) || 0)
+                        }
+                        placeholder="0"
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="w-20 space-y-2">
                   <Label>Total</Label>
                   <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                    ₹{item.quantity > 0 && item.type ? (item.quantity * item.price).toFixed(0) : "0"}
+                    ₹
+                    {item.sellBy === "kg"
+                      ? item.quantity > 0 && item.type
+                        ? (item.quantity * item.price).toFixed(0)
+                        : "0"
+                      : item.packetQuantity! > 0 && item.type
+                        ? (item.packetQuantity! * item.packetPrice!).toFixed(0)
+                        : "0"}
                   </div>
                 </div>
                 {khakhraItems.length > 1 && (

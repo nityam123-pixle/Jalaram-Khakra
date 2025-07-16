@@ -135,106 +135,108 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Orders</h2>
-          <p className="text-muted-foreground">Manage all your Khakhra and Patra orders</p>
-        </div>
-        <NewOrderDialog
-          trigger={
-            <Button size="lg" className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Order
-            </Button>
-          }
-          onOrderCreated={fetchOrders}
-        />
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search orders by shop name or city..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
+    <div className="h-full overflow-auto">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Orders</h2>
+            <p className="text-muted-foreground">Manage all your Khakhra and Patra orders</p>
+          </div>
+          <NewOrderDialog
+            trigger={
+              <Button size="lg" className="gap-2">
+                <Plus className="h-4 w-4" />
+                New Order
+              </Button>
+            }
+            onOrderCreated={fetchOrders}
           />
         </div>
-        <Select value={cityFilter} onValueChange={setCityFilter}>
-          <SelectTrigger className="w-full sm:w-48">
-            <Filter className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Filter by city" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Cities</SelectItem>
-            {CITIES.map((city) => (
-              <SelectItem key={city} value={city}>
-                {city}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
-          <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
-          <TabsTrigger value="completed">Completed ({counts.completed})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value={activeTab} className="mt-6">
-          {filteredOrders.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredOrders.map((order) => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  onStatusChange={handleStatusChange}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search orders by shop name or city..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={cityFilter} onValueChange={setCityFilter}>
+            <SelectTrigger className="w-full sm:w-48">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Filter by city" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Cities</SelectItem>
+              {CITIES.map((city) => (
+                <SelectItem key={city} value={city}>
+                  {city}
+                </SelectItem>
               ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="mx-auto h-12 w-12 text-muted-foreground">
-                <Search className="h-full w-full" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold">No orders found</h3>
-              <p className="mt-2 text-muted-foreground">
-                {searchTerm || cityFilter !== "all"
-                  ? "Try adjusting your search or filters"
-                  : "Get started by creating your first order"}
-              </p>
-              {!searchTerm && cityFilter === "all" && (
-                <NewOrderDialog
-                  trigger={
-                    <Button className="mt-4">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create First Order
-                    </Button>
-                  }
-                  onOrderCreated={fetchOrders}
-                />
-              )}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+            </SelectContent>
+          </Select>
+        </div>
 
-      {/* Edit Order Dialog */}
-      <EditOrderDialog
-        order={editingOrder}
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        onOrderUpdated={fetchOrders}
-      />
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
+            <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
+            <TabsTrigger value="completed">Completed ({counts.completed})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value={activeTab} className="mt-6">
+            {filteredOrders.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredOrders.map((order) => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onStatusChange={handleStatusChange}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="mx-auto h-12 w-12 text-muted-foreground">
+                  <Search className="h-full w-full" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold">No orders found</h3>
+                <p className="mt-2 text-muted-foreground">
+                  {searchTerm || cityFilter !== "all"
+                    ? "Try adjusting your search or filters"
+                    : "Get started by creating your first order"}
+                </p>
+                {!searchTerm && cityFilter === "all" && (
+                  <NewOrderDialog
+                    trigger={
+                      <Button className="mt-4">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create First Order
+                      </Button>
+                    }
+                    onOrderCreated={fetchOrders}
+                  />
+                )}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Edit Order Dialog */}
+        <EditOrderDialog
+          order={editingOrder}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          onOrderUpdated={fetchOrders}
+        />
+      </div>
     </div>
   )
 }

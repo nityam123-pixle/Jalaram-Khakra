@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Khakhra Orders - Order Management System",
-  description: "Modern order management system for Khakhra and Patra business for my father by - Nityam Suchak",
+  description: "Modern order management system for Khakhra and Patra business",
 }
 
 export default function RootLayout({
@@ -24,16 +24,20 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <SidebarProvider>
-            <AppSidebar />
-            <SidebarInset>
-              <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-                <SidebarTrigger className="-ml-1" />
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-semibold">Khakhra Order Management</h1>
-                </div>
-              </header>
-              <main className="flex-1 overflow-auto">{children}</main>
-            </SidebarInset>
+            <div className="flex h-screen w-full overflow-hidden">
+              <AppSidebar />
+              <SidebarInset className="flex flex-col min-w-0 flex-1">
+                <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+                  <SidebarTrigger className="-ml-1" />
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-semibold">Khakhra Order Management</h1>
+                  </div>
+                </header>
+                <main className="flex-1 overflow-auto min-h-0">
+                  <div className="h-full">{children}</div>
+                </main>
+              </SidebarInset>
+            </div>
           </SidebarProvider>
           <Toaster />
         </ThemeProvider>

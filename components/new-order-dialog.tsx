@@ -9,7 +9,15 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { CITIES, KHAKHRA_TYPES, PATRA_PRICE_MIN, PATRA_PRICE_MAX, supabase } from "@/lib/supabase"
+import {
+  CITIES,
+  KHAKHRA_TYPES,
+  PATRA_PRICE_MIN,
+  PATRA_PRICE_MAX,
+  supabase,
+  getPriceRange,
+  calculateDynamicProfit,
+} from "@/lib/supabase"
 import { Plus, X, IndianRupee } from "lucide-react"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
@@ -18,6 +26,10 @@ interface KhakhraItem {
   type: string
   quantity: number
   price: number
+  // New fields for packet-based items
+  sellBy: "kg" | "packet"
+  packetQuantity?: number
+  packetPrice?: number
 }
 
 interface NewOrderDialogProps {
@@ -32,13 +44,13 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const [shopName, setShopName] = useState("")
   const [address, setAddress] = useState("")
   const [city, setCity] = useState("")
-  const [khakhraItems, setKhakhraItems] = useState<KhakhraItem[]>([{ type: "", quantity: 0, price: 200 }])
+  const [khakhraItems, setKhakhraItems] = useState<KhakhraItem[]>([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
   const [wantsPatra, setWantsPatra] = useState(false)
   const [patraPackets, setPatraPackets] = useState(0)
   const [patraPrice, setPatraPrice] = useState(80)
 
   const addKhakhraItem = () => {
-    setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200 }])
+    setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200, sellBy: "kg" }])
   }
 
   const removeKhakhraItem = (index: number) => {
@@ -47,15 +59,52 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     }
   }
 
+  const calculateItemTotal = (item: KhakhraItem) => {
+    if (!item.type) return 0
+
+    if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
+      return item.packetQuantity * item.packetPrice
+    } else if (item.quantity > 0) {
+      return item.quantity * item.price
+    }
+    return 0
+  }
+
+  const calculateItemProfit = (item: KhakhraItem) => {
+    if (!item.type) return 0
+
+    const khakhraType = KHAKHRA_TYPES.find((t) => t.name === item.type)
+    if (!khakhraType) return 0
+
+    if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
+      const profitPerPacket = calculateDynamicProfit(khakhraType, item.packetPrice, true)
+      return item.packetQuantity * profitPerPacket
+    } else if (item.quantity > 0) {
+      const profitPerKg = calculateDynamicProfit(khakhraType, item.price, false)
+      return item.quantity * profitPerKg
+    }
+    return 0
+  }
+
   const updateKhakhraItem = (index: number, field: keyof KhakhraItem, value: string | number) => {
     const updated = [...khakhraItems]
 
     if (field === "type") {
-      const selectedType = KHAKHRA_TYPES.find((t) => t.name === value)
+      const newSelectedType = KHAKHRA_TYPES.find((t) => t.name === value)
       updated[index] = {
         ...updated[index],
         [field]: value,
-        price: selectedType?.price || 200,
+        price: newSelectedType?.basePrice || 200,
+        sellBy: newSelectedType?.sellBy === "both" ? "kg" : "kg",
+        packetPrice: newSelectedType?.basePacketPrice || 0,
+      }
+    } else if (field === "sellBy") {
+      updated[index] = {
+        ...updated[index],
+        [field]: value,
+        // Reset quantities when changing sell type
+        quantity: 0,
+        packetQuantity: 0,
       }
     } else {
       updated[index] = { ...updated[index], [field]: value }
@@ -66,24 +115,32 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
 
   const calculateTotal = () => {
     const khakhraTotal = khakhraItems.reduce((sum, item) => {
-      if (item.type && item.quantity > 0) {
-        return sum + item.quantity * item.price
-      }
-      return sum
+      return sum + calculateItemTotal(item)
     }, 0)
 
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || 80) : 0
     return khakhraTotal + patraTotal
   }
 
+  const calculateTotalProfit = () => {
+    const khakhraProfit = khakhraItems.reduce((sum, item) => {
+      return sum + calculateItemProfit(item)
+    }, 0)
+
+    const patraProfit = wantsPatra
+      ? patraPackets * (patraPrice >= 85 ? 16 : patraPrice <= 80 ? 11 : Math.round(11 + ((patraPrice - 80) / 5) * 5))
+      : 0
+    return khakhraProfit + patraProfit
+  }
+
   const resetForm = () => {
     setShopName("")
     setAddress("")
     setCity("")
-    setKhakhraItems([{ type: "", quantity: 0, price: 200 }])
+    setKhakhraItems([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
     setWantsPatra(false)
     setPatraPackets(0)
-    setPatraPrice(80) // Always reset to 80
+    setPatraPrice(80)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,7 +158,9 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         return
       }
 
-      const validKhakhraItems = khakhraItems.filter((item) => item.type && item.quantity > 0)
+      const validKhakhraItems = khakhraItems.filter(
+        (item) => item.type && (item.quantity > 0 || item.packetQuantity > 0),
+      )
 
       // Check if order has either Khakhra items OR Patra
       if (validKhakhraItems.length === 0 && !wantsPatra) {
@@ -123,10 +182,16 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         return
       }
 
-      const totalKhakhraKg = validKhakhraItems.reduce((sum, item) => sum + item.quantity, 0)
+      const totalKhakhraKg = validKhakhraItems.reduce((sum, item) => {
+        if (item.sellBy === "packet") {
+          return sum + (item.packetQuantity || 0) * 0.2
+        } else {
+          return sum + item.quantity
+        }
+      }, 0)
       const totalAmount = calculateTotal()
 
-      // Prepare insert object - only include patra_price_per_packet if the column exists
+      // Prepare insert object
       const insertData: any = {
         shop_name: shopName,
         address,
@@ -138,7 +203,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         status: "pending",
       }
 
-      // Try to include patra_price_per_packet, but handle gracefully if column doesn't exist
+      // Try to include patra_price_per_packet
       try {
         insertData.patra_price_per_packet = patraPrice || 80
       } catch (error) {
@@ -152,32 +217,44 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
 
       // Insert khakhra items only if there are valid items
       if (validKhakhraItems.length > 0) {
-        const khakhraItemsToInsert = validKhakhraItems.map((item) => ({
-          order_id: order.id,
-          khakhra_type: item.type,
-          quantity_kg: item.quantity,
-          price_per_kg: item.price,
-          total_price: item.quantity * item.price,
-        }))
+        const khakhraItemsToInsert = validKhakhraItems.map((item) => {
+          const baseItem = {
+            order_id: order.id,
+            khakhra_type: item.type,
+            price_per_kg: item.price,
+          }
+
+          if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
+            return {
+              ...baseItem,
+              quantity_kg: item.packetQuantity * 0.2, // Convert packets to kg for storage
+              total_price: item.packetQuantity * item.packetPrice,
+              is_packet_item: true,
+              packet_quantity: item.packetQuantity,
+              price_per_packet: item.packetPrice,
+            }
+          } else {
+            return {
+              ...baseItem,
+              quantity_kg: item.quantity,
+              total_price: item.quantity * item.price,
+              is_packet_item: false,
+              packet_quantity: 0,
+              price_per_packet: 0,
+            }
+          }
+        })
 
         const { error: itemsError } = await supabase.from("khakhra_items").insert(khakhraItemsToInsert)
 
         if (itemsError) throw itemsError
       }
 
-      // Success message based on order type
-      let orderType = ""
-      if (validKhakhraItems.length > 0 && wantsPatra) {
-        orderType = "Khakhra & Patra"
-      } else if (validKhakhraItems.length > 0) {
-        orderType = "Khakhra"
-      } else {
-        orderType = "Patra"
-      }
-
+      // Success message with profit information
+      const totalProfit = calculateTotalProfit()
       toast({
         title: "Success",
-        description: `${orderType} order created successfully! Total: ₹${totalAmount}`,
+        description: `Order created successfully! Total: ₹${totalAmount} (Profit: ₹${totalProfit})`,
       })
       resetForm()
       setOpen(false)
@@ -197,7 +274,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Order</DialogTitle>
         </DialogHeader>
@@ -244,7 +321,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
             </div>
           </div>
 
-          {/* Patra Option - Moved up for better UX */}
+          {/* Patra Option */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Patra Option</h3>
             <div className="flex items-center space-x-2">
@@ -269,15 +346,23 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                 </div>
                 <div className="w-24 space-y-2">
                   <Label htmlFor="patraPrice">Price per packet</Label>
-                  <Input
-                    id="patraPrice"
-                    type="number"
-                    min={PATRA_PRICE_MIN}
-                    max={PATRA_PRICE_MAX}
-                    value={patraPrice}
-                    onChange={(e) => setPatraPrice(Number.parseInt(e.target.value) || 80)}
-                    placeholder="80"
-                  />
+                  <Select
+                    value={patraPrice.toString()}
+                    onValueChange={(value) => setPatraPrice(Number.parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: PATRA_PRICE_MAX - PATRA_PRICE_MIN + 1 }, (_, i) => PATRA_PRICE_MIN + i).map(
+                        (price) => (
+                          <SelectItem key={price} value={price.toString()}>
+                            ₹{price}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="w-20 space-y-2">
                   <Label>Total</Label>
@@ -289,7 +374,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
             )}
           </div>
 
-          {/* Khakhra Selection - Made optional */}
+          {/* Khakhra Selection */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium">Khakhra Selection (Optional)</h3>
@@ -299,58 +384,140 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Add Khakhra items if customer wants them, or leave empty for Patra-only orders
+              Add Khakhra items with flexible pricing, or leave empty for Patra-only orders
             </p>
-            {khakhraItems.map((item, index) => (
-              <div key={index} className="flex items-end gap-2 p-3 border rounded-lg">
-                <div className="flex-1 space-y-2">
-                  <Label>Khakhra Type</Label>
-                  <Select value={item.type} onValueChange={(value) => updateKhakhraItem(index, "type", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select khakhra type (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {KHAKHRA_TYPES.map((type) => (
-                        <SelectItem key={type.name} value={type.name}>
-                          {type.name} - ₹{type.price}/kg
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="w-24 space-y-2">
-                  <Label>Quantity (kg)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={item.quantity}
-                    onChange={(e) => updateKhakhraItem(index, "quantity", Number.parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="w-20 space-y-2">
-                  <Label>Total</Label>
-                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                    ₹{item.quantity > 0 && item.type ? (item.quantity * item.price).toFixed(0) : "0"}
+            {khakhraItems.map((item, index) => {
+              const selectedType = KHAKHRA_TYPES.find((t) => t.name === item.type)
+              const canSellByPacket = selectedType?.sellBy === "both"
+              const priceRange = selectedType ? getPriceRange(selectedType, item.sellBy === "packet") : []
+              const itemProfit = calculateItemProfit(item)
+
+              return (
+                <div key={index} className="flex items-end gap-2 p-3 border rounded-lg">
+                  <div className="flex-1 space-y-2">
+                    <Label>Khakhra Type</Label>
+                    <Select value={item.type} onValueChange={(value) => updateKhakhraItem(index, "type", value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select khakhra type (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {KHAKHRA_TYPES.map((type) => (
+                          <SelectItem key={type.name} value={type.name}>
+                            {type.name} - ₹{type.basePrice}
+                            {type.maxPrice > type.basePrice ? `-${type.maxPrice}` : ""}/kg
+                            {type.category === "bhakri" && ` (₹${type.basePacketPrice}-${type.maxPacketPrice}/packet)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
+
+                  {/* Sell By Selection for Bhakri items */}
+                  {canSellByPacket && item.type && (
+                    <div className="w-24 space-y-2">
+                      <Label>Sell By</Label>
+                      <Select
+                        value={item.sellBy}
+                        onValueChange={(value: "kg" | "packet") => updateKhakhraItem(index, "sellBy", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kg">Per Kg</SelectItem>
+                          <SelectItem value="packet">Per Packet</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Price Selection */}
+                  {selectedType && (
+                    <div className="w-20 space-y-2">
+                      <Label>Price</Label>
+                      <Select
+                        value={(item.sellBy === "packet" ? item.packetPrice : item.price)?.toString() || ""}
+                        onValueChange={(value) =>
+                          updateKhakhraItem(
+                            index,
+                            item.sellBy === "packet" ? "packetPrice" : "price",
+                            Number.parseInt(value),
+                          )
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {priceRange.map((price) => {
+                            const profit = calculateDynamicProfit(selectedType, price, item.sellBy === "packet")
+                            return (
+                              <SelectItem key={price} value={price.toString()}>
+                                ₹{price} (₹{profit} profit)
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="w-24 space-y-2">
+                    <Label>{item.sellBy === "packet" ? "Packets" : "Quantity (kg)"}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step={item.sellBy === "packet" ? "1" : "0.5"}
+                      value={item.sellBy === "packet" ? item.packetQuantity || 0 : item.quantity}
+                      onChange={(e) => {
+                        const value =
+                          item.sellBy === "packet"
+                            ? Number.parseInt(e.target.value) || 0
+                            : Number.parseFloat(e.target.value) || 0
+                        updateKhakhraItem(index, item.sellBy === "packet" ? "packetQuantity" : "quantity", value)
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="w-20 space-y-2">
+                    <Label>Total</Label>
+                    <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
+                      ₹{calculateItemTotal(item)}
+                    </div>
+                  </div>
+
+                  <div className="w-20 space-y-2">
+                    <Label>Profit</Label>
+                    <div className="flex items-center h-10 px-3 border rounded-md bg-green-50 text-green-700 text-sm font-medium">
+                      ₹{itemProfit}
+                    </div>
+                  </div>
+
+                  {khakhraItems.length > 1 && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => removeKhakhraItem(index)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
-                {khakhraItems.length > 1 && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => removeKhakhraItem(index)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
 
-          {/* Order Total */}
-          <div className="border-t pt-4">
+          {/* Order Summary */}
+          <div className="border-t pt-4 space-y-2">
             <div className="flex items-center justify-between text-lg font-semibold">
               <span>Order Total:</span>
               <div className="flex items-center gap-1">
                 <IndianRupee className="h-4 w-4" />
                 <span>{calculateTotal()}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-lg font-semibold text-green-600">
+              <span>Total Profit:</span>
+              <div className="flex items-center gap-1">
+                <IndianRupee className="h-4 w-4" />
+                <span>{calculateTotalProfit()}</span>
               </div>
             </div>
           </div>
