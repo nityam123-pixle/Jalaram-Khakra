@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 
 const supabaseUrl = "https://gpynpjedcwbbpkyyuvga.supabase.co"
 const supabaseAnonKey =
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdweW5wamVkY3diYnBreXl1dmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODYxMjIsImV4cCI6MjA2NjI2MjEyMn0.RwPy2ttONchySm3eaVgmhOsMd5eT1SKGOThRevDMJ2k"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdweW5wamVkY3diYnBreXl1dmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODYxMjIsImV4cCI6MjA2NjI2MjEyMn0.RwPy2ttONchySm3eaVgmhOsMd5eT1SKGOThRevDMJ2k"
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
@@ -312,7 +312,7 @@ export const CITIES = [
 ]
 
 // Patra pricing range
-export const PATRA_PRICE_MIN = 75 // Updated min price
+export const PATRA_PRICE_MIN = 80 // Updated min price to match DB constraint
 export const PATRA_PRICE_MAX = 85 // Updated max price
 export const PATRA_PRICE = 80 // Default price, still within range
 
@@ -346,11 +346,11 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
 // Add dynamic patra profit calculation function
 export const calculatePatraProfit = (pricePerPacket: number): number => {
   // Assuming cost of Patra is 64. Profit = price - cost.
-  // At 75, profit = 75 - 64 = 11
+  // At 80, profit = 80 - 64 = 16 (new base)
   // At 85, profit = 85 - 64 = 21
   // Profit increases by 1 for every 1 rupee increase in price.
-  const basePatraPrice = 75
-  const basePatraProfit = 11
+  const basePatraPrice = 80 // Updated base price for profit calculation
+  const basePatraProfit = 16 // Updated base profit for 80
   return basePatraProfit + (pricePerPacket - basePatraPrice)
 }
 

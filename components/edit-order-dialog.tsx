@@ -118,36 +118,37 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
   }
 
   const updateKhakhraItem = (index: number, field: keyof KhakhraItem, value: string | number | boolean) => {
-    const updated = [...khakhraItems]
-    const currentItem = updated[index]
+    setKhakhraItems((prevItems) => {
+      const updated = [...prevItems]
+      const currentItem = { ...updated[index] } // Create a shallow copy to avoid direct mutation
 
-    if (field === "type") {
-      const newSelectedType = KHAKHRA_TYPES.find((t) => t.name === value)
-      const newSellBy = newSelectedType?.sellBy === "both" ? "packet" : "kg" // Default to packet for 'both'
-      updated[index] = {
-        ...currentItem,
-        type: value as string,
-        sellBy: newSellBy,
-        price: newSellBy === "kg" ? newSelectedType?.basePrice || 200 : 0,
-        packetPrice: newSellBy === "packet" ? newSelectedType?.basePacketPrice || 0 : 0,
-        quantity: 0, // Reset quantity when type changes
-        packetQuantity: 0, // Reset packet quantity when type changes
+      if (field === "type") {
+        const newSelectedType = KHAKHRA_TYPES.find((t) => t.name === value)
+        const newSellBy = newSelectedType?.sellBy === "both" ? "packet" : "kg"
+        currentItem.type = value as string
+        currentItem.sellBy = newSellBy
+        currentItem.price = newSellBy === "kg" ? newSelectedType?.basePrice || 200 : 0
+        currentItem.packetPrice = newSellBy === "packet" ? newSelectedType?.basePacketPrice || 0 : 0
+        currentItem.quantity = 0
+        currentItem.packetQuantity = 0
+      } else if (field === "sellBy") {
+        const selectedType = KHAKHRA_TYPES.find((t) => t.name === currentItem.type)
+        currentItem.sellBy = value as "kg" | "packet"
+        currentItem.quantity = 0
+        currentItem.packetQuantity = 0
+        currentItem.price = currentItem.sellBy === "kg" ? selectedType?.basePrice || 200 : 0
+        currentItem.packetPrice = currentItem.sellBy === "packet" ? selectedType?.basePacketPrice || 0 : 0
+      } else {
+        // Handle quantity, price, packetQuantity, packetPrice directly
+        if (field === "quantity" || field === "packetQuantity" || field === "price" || field === "packetPrice") {
+          ;(currentItem as any)[field] = Number(value) // Ensure it's a number
+        } else {
+          ;(currentItem as any)[field] = value
+        }
       }
-    } else if (field === "sellBy") {
-      const selectedType = KHAKHRA_TYPES.find((t) => t.name === currentItem.type)
-      updated[index] = {
-        ...currentItem,
-        [field]: value,
-        quantity: 0,
-        packetQuantity: 0,
-        price: value === "kg" ? selectedType?.basePrice || 200 : 0, // Default kg price
-        packetPrice: value === "packet" ? selectedType?.basePacketPrice || 0 : 0, // Default packet price
-      }
-    } else {
-      updated[index] = { ...currentItem, [field]: value }
-    }
-
-    setKhakhraItems(updated)
+      updated[index] = currentItem
+      return updated
+    })
   }
 
   const calculateTotal = () => {
@@ -302,7 +303,6 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
         if (itemsError) throw itemsError
       }
 
-      const totalProfit = calculateTotalProfit()
       toast({
         title: "Success",
         description: `Order updated successfully! Total: ₹${totalAmount}`,
@@ -441,7 +441,6 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
               const selectedType = KHAKHRA_TYPES.find((t) => t.name === item.type)
               const canSellByPacket = selectedType?.sellBy === "both"
               const priceRange = selectedType ? getPriceRange(selectedType, item.sellBy === "packet") : []
-              const itemProfit = calculateItemProfit(item)
 
               return (
                 <div
@@ -498,10 +497,10 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
                         </SelectTrigger>
                         <SelectContent>
                           {priceRange.map((price) => {
-                            const profit = calculateDynamicProfit(selectedType, price, item.sellBy === "packet")
+                            // Profit display removed from here
                             return (
                               <SelectItem key={price} value={price.toString()}>
-                                ₹{price} (₹{profit} profit)
+                                ₹{price}
                               </SelectItem>
                             )
                           })}
@@ -541,7 +540,6 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
                           : "0"}
                     </div>
                   </div>
-
                   {khakhraItems.length > 1 && (
                     <Button
                       type="button"
