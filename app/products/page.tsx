@@ -2,11 +2,11 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getKhakhraTypesByCategory, calculateDynamicProfit } from "@/lib/supabase"
+import { getKhakhraTypesByCategory, PATRA_PRICE_MIN, PATRA_PRICE_MAX } from "@/lib/supabase"
 import { Package, IndianRupee, ShoppingBag, TrendingUp } from "lucide-react"
 
 export default function ProductsPage() {
-  const { regular, premium, bhakri } = getKhakhraTypesByCategory()
+  const { regular, premium, bhakri, farali } = getKhakhraTypesByCategory()
 
   return (
     <div className="h-full overflow-auto">
@@ -45,12 +45,6 @@ export default function ProductsPage() {
                           ₹{type.basePrice}-{type.maxPrice}/kg
                         </Badge>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Profit Range:</span>
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 text-xs">
-                          ₹{type.baseProfit}-{calculateDynamicProfit(type, type.maxPrice)}/kg
-                        </Badge>
-                      </div>
                     </div>
                   </div>
                 ))}
@@ -82,12 +76,6 @@ export default function ProductsPage() {
                         <span className="text-muted-foreground">Price Range:</span>
                         <Badge variant="outline" className="bg-blue-50 text-blue-700 text-xs">
                           ₹{type.basePrice}-{type.maxPrice}/kg
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Profit Range:</span>
-                        <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
-                          ₹{type.baseProfit}-{calculateDynamicProfit(type, type.maxPrice)}/kg
                         </Badge>
                       </div>
                     </div>
@@ -135,10 +123,49 @@ export default function ProductsPage() {
                           ₹{type.basePrice}-{type.maxPrice}
                         </Badge>
                       </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* NEW: Farali Khakhra Options - Flexible pricing */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5" />
+                Farali Varieties
+              </CardTitle>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1 text-sm font-semibold text-orange-600">
+                  <IndianRupee className="h-3 w-3" />
+                  <span>45-65 per packet (200g)</span>
+                </div>
+                <div className="flex items-center gap-1 text-sm font-semibold text-orange-600">
+                  <IndianRupee className="h-3 w-3" />
+                  <span>225-325 per kg</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {farali.map((type) => (
+                  <div key={type.name} className="p-2 border rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">{type.name}</span>
+                    </div>
+                    <div className="flex flex-col gap-1 text-xs">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Profit/packet:</span>
-                        <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
-                          ₹{type.basePacketProfit}-{calculateDynamicProfit(type, type.maxPacketPrice!, true)}
+                        <span className="text-muted-foreground">Per packet:</span>
+                        <Badge variant="outline" className="bg-orange-50 text-orange-700 text-xs">
+                          ₹{type.basePacketPrice}-{type.maxPacketPrice}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Per kg:</span>
+                        <Badge variant="outline" className="bg-orange-50 text-orange-700 text-xs">
+                          ₹{type.basePrice}-{type.maxPrice}
                         </Badge>
                       </div>
                     </div>
@@ -155,9 +182,11 @@ export default function ProductsPage() {
                 <Package className="h-5 w-5" />
                 Patra Options
               </CardTitle>
-              <div className="flex items-center gap-1 text-lg font-semibold text-orange-600">
+              <div className="flex items-center gap-1 text-lg font-semibold text-red-600">
                 <IndianRupee className="h-4 w-4" />
-                <span>75-85 per packet</span>
+                <span>
+                  {PATRA_PRICE_MAX} per packet
+                </span>
               </div>
             </CardHeader>
             <CardContent>
@@ -167,12 +196,9 @@ export default function ProductsPage() {
                     <span className="font-medium">Traditional Patra</span>
                     <p className="text-sm text-muted-foreground">Classic steamed patra packets</p>
                   </div>
-                  <div className="text-right">
-                    <Badge variant="outline" className="bg-orange-50 text-orange-700 mb-1">
-                      ₹80-85/packet
-                    </Badge>
-                    <div className="text-xs text-muted-foreground">Profit: ₹11-16</div>
-                  </div>
+                  <Badge variant="outline" className="bg-red-50 text-red-700">
+                    ₹{PATRA_PRICE_MAX}/packet
+                  </Badge>
                 </div>
               </div>
             </CardContent>
@@ -192,24 +218,44 @@ export default function ProductsPage() {
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
                 <h4 className="font-semibold mb-2">Regular Khakhra</h4>
                 <ul className="space-y-1 text-muted-foreground">
-                  <li>• Base: ₹200/kg (₹20 profit)</li>
-                  <li>• Max: ₹225/kg (₹45 profit)</li>
+                  <li>• Base: ₹200/kg</li>
+                  <li>• Max: ₹225/kg</li>
                   <li>• +₹1 profit per ₹1 price increase</li>
                 </ul>
               </div>
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
                 <h4 className="font-semibold mb-2">Premium Khakhra</h4>
                 <ul className="space-y-1 text-muted-foreground">
-                  <li>• Base: ₹210/kg (₹25 profit)</li>
-                  <li>• Max: ₹225/kg (₹40 profit)</li>
+                  <li>• Base: ₹210/kg</li>
+                  <li>• Max: ₹225/kg</li>
                   <li>• +₹1 profit per ₹1 price increase</li>
                 </ul>
               </div>
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
                 <h4 className="font-semibold mb-2">Bhakri Varieties</h4>
                 <ul className="space-y-1 text-muted-foreground">
-                  <li>• Base: ₹45/packet (₹7 profit)</li>
-                  <li>• Max: ₹50/packet (₹12 profit)</li>
+                  <li>• Base: ₹45/packet</li>
+                  <li>• Max: ₹50/packet</li>
+                  <li>• +₹1 profit per ₹1 price increase</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
+                <h4 className="font-semibold mb-2">Farali Varieties</h4>
+                <ul className="space-y-1 text-muted-foreground">
+                  <li>• Base: ₹45/packet (Regular/Masala)</li>
+                  <li>• Max: ₹50/packet (Regular/Masala)</li>
+                  <li>• Base: ₹60/packet (Bhakari Container)</li>
+                  <li>• Max: ₹65/packet (Bhakari Container)</li>
+                  <li>• +₹1 profit per ₹1 price increase</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
+                <h4 className="font-semibold mb-2">Patra</h4>
+                <ul className="space-y-1 text-muted-foreground">
+                  <li>
+                    • Price Range: ₹{PATRA_PRICE_MIN}-{PATRA_PRICE_MAX}/packet
+                  </li>
+                  <li>• Profit: ₹11-21/packet</li>
                   <li>• +₹1 profit per ₹1 price increase</li>
                 </ul>
               </div>

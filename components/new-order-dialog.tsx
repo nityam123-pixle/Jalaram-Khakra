@@ -47,7 +47,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const [khakhraItems, setKhakhraItems] = useState<KhakhraItem[]>([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
   const [wantsPatra, setWantsPatra] = useState(false)
   const [patraPackets, setPatraPackets] = useState(0)
-  const [patraPrice, setPatraPrice] = useState(80)
+  const [patraPrice, setPatraPrice] = useState(PATRA_PRICE_MIN) // Default to min patra price
 
   const addKhakhraItem = () => {
     setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200, sellBy: "kg" }])
@@ -88,26 +88,32 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
 
   const updateKhakhraItem = (index: number, field: keyof KhakhraItem, value: string | number) => {
     const updated = [...khakhraItems]
+    const currentItem = updated[index]
 
     if (field === "type") {
       const newSelectedType = KHAKHRA_TYPES.find((t) => t.name === value)
+      const newSellBy = newSelectedType?.sellBy === "both" ? "packet" : "kg" // Default to packet for 'both'
       updated[index] = {
-        ...updated[index],
+        ...currentItem,
         [field]: value,
-        price: newSelectedType?.basePrice || 200,
-        sellBy: newSelectedType?.sellBy === "both" ? "kg" : "kg",
-        packetPrice: newSelectedType?.basePacketPrice || 0,
+        sellBy: newSellBy,
+        price: newSellBy === "kg" ? newSelectedType?.basePrice || 200 : 0,
+        packetPrice: newSellBy === "packet" ? newSelectedType?.basePacketPrice || 0 : 0,
+        quantity: 0, // Reset quantity when type changes
+        packetQuantity: 0, // Reset packet quantity when type changes
       }
     } else if (field === "sellBy") {
+      const selectedType = KHAKHRA_TYPES.find((t) => t.name === currentItem.type)
       updated[index] = {
-        ...updated[index],
+        ...currentItem,
         [field]: value,
-        // Reset quantities when changing sell type
         quantity: 0,
         packetQuantity: 0,
+        price: value === "kg" ? selectedType?.basePrice || 200 : 0, // Default kg price
+        packetPrice: value === "packet" ? selectedType?.basePacketPrice || 0 : 0, // Default packet price
       }
     } else {
-      updated[index] = { ...updated[index], [field]: value }
+      updated[index] = { ...currentItem, [field]: value }
     }
 
     setKhakhraItems(updated)
@@ -118,7 +124,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
       return sum + calculateItemTotal(item)
     }, 0)
 
-    const patraTotal = wantsPatra ? patraPackets * (patraPrice || 80) : 0
+    const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
     return khakhraTotal + patraTotal
   }
 
@@ -128,7 +134,12 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     }, 0)
 
     const patraProfit = wantsPatra
-      ? patraPackets * (patraPrice >= 85 ? 16 : patraPrice <= 80 ? 11 : Math.round(11 + ((patraPrice - 80) / 5) * 5))
+      ? patraPackets *
+        (patraPrice >= PATRA_PRICE_MAX
+          ? 21
+          : patraPrice <= PATRA_PRICE_MIN
+            ? 11
+            : Math.round(11 + ((patraPrice - PATRA_PRICE_MIN) / (PATRA_PRICE_MAX - PATRA_PRICE_MIN)) * 10))
       : 0
     return khakhraProfit + patraProfit
   }
@@ -140,7 +151,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     setKhakhraItems([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
     setWantsPatra(false)
     setPatraPackets(0)
-    setPatraPrice(80)
+    setPatraPrice(PATRA_PRICE_MIN)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -159,7 +170,9 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
       }
 
       const validKhakhraItems = khakhraItems.filter(
-        (item) => item.type && (item.quantity > 0 || item.packetQuantity > 0),
+        (item) =>
+          item.type &&
+          (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
       )
 
       // Check if order has either Khakhra items OR Patra
@@ -205,7 +218,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
 
       // Try to include patra_price_per_packet
       try {
-        insertData.patra_price_per_packet = patraPrice || 80
+        insertData.patra_price_per_packet = patraPrice || PATRA_PRICE_MIN
       } catch (error) {
         console.log("patra_price_per_packet column not available yet")
       }
@@ -221,7 +234,6 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
           const baseItem = {
             order_id: order.id,
             khakhra_type: item.type,
-            price_per_kg: item.price,
           }
 
           if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
@@ -232,6 +244,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
               is_packet_item: true,
               packet_quantity: item.packetQuantity,
               price_per_packet: item.packetPrice,
+              price_per_kg: KHAKHRA_TYPES.find((t) => t.name === item.type)?.basePrice || 0, // Store base kg price for consistency
             }
           } else {
             return {
@@ -241,6 +254,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
               is_packet_item: false,
               packet_quantity: 0,
               price_per_packet: 0,
+              price_per_kg: item.price,
             }
           }
         })
@@ -331,8 +345,8 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
               </Label>
             </div>
             {wantsPatra && (
-              <div className="flex items-end gap-2">
-                <div className="w-32 space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end mt-4">
+                <div className="space-y-2">
                   <Label htmlFor="patraPackets">Number of packets *</Label>
                   <Input
                     id="patraPackets"
@@ -344,7 +358,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                     required={wantsPatra}
                   />
                 </div>
-                <div className="w-24 space-y-2">
+                <div className="space-y-2">
                   <Label htmlFor="patraPrice">Price per packet</Label>
                   <Select
                     value={patraPrice.toString()}
@@ -364,7 +378,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="w-20 space-y-2">
+                <div className="space-y-2">
                   <Label>Total</Label>
                   <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
                     ₹{patraPackets * patraPrice}
@@ -393,8 +407,11 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
               const itemProfit = calculateItemProfit(item)
 
               return (
-                <div key={index} className="flex items-end gap-2 p-3 border rounded-lg">
-                  <div className="flex-1 space-y-2">
+                <div
+                  key={index}
+                  className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 p-3 border rounded-lg items-end"
+                >
+                  <div className="col-span-full lg:col-span-2 space-y-2">
                     <Label>Khakhra Type</Label>
                     <Select value={item.type} onValueChange={(value) => updateKhakhraItem(index, "type", value)}>
                       <SelectTrigger>
@@ -405,16 +422,17 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                           <SelectItem key={type.name} value={type.name}>
                             {type.name} - ₹{type.basePrice}
                             {type.maxPrice > type.basePrice ? `-${type.maxPrice}` : ""}/kg
-                            {type.category === "bhakri" && ` (₹${type.basePacketPrice}-${type.maxPacketPrice}/packet)`}
+                            {(type.category === "bhakri" || type.category === "farali") &&
+                              ` (₹${type.basePacketPrice}-${type.maxPacketPrice}/packet)`}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
-                  {/* Sell By Selection for Bhakri items */}
+                  {/* Sell By Selection for Bhakri/Farali items */}
                   {canSellByPacket && item.type && (
-                    <div className="w-24 space-y-2">
+                    <div className="space-y-2">
                       <Label>Sell By</Label>
                       <Select
                         value={item.sellBy}
@@ -433,7 +451,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
 
                   {/* Price Selection */}
                   {selectedType && (
-                    <div className="w-20 space-y-2">
+                    <div className="space-y-2">
                       <Label>Price</Label>
                       <Select
                         value={(item.sellBy === "packet" ? item.packetPrice : item.price)?.toString() || ""}
@@ -462,7 +480,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                     </div>
                   )}
 
-                  <div className="w-24 space-y-2">
+                  <div className="space-y-2">
                     <Label>{item.sellBy === "packet" ? "Packets" : "Quantity (kg)"}</Label>
                     <Input
                       type="number"
@@ -480,22 +498,31 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                     />
                   </div>
 
-                  <div className="w-20 space-y-2">
+                  <div className="space-y-2">
                     <Label>Total</Label>
                     <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
                       ₹{calculateItemTotal(item)}
                     </div>
                   </div>
 
-                  <div className="w-20 space-y-2">
-                    <Label>Profit</Label>
-                    <div className="flex items-center h-10 px-3 border rounded-md bg-green-50 text-green-700 text-sm font-medium">
-                      ₹{itemProfit}
-                    </div>
+                  {/* Remove this block */}
+                  {/*
+                <div className="space-y-2">
+                  <Label>Profit</Label>
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-green-50 text-green-700 text-sm font-medium">
+                    ₹{itemProfit}
                   </div>
+                </div>
+                */}
 
                   {khakhraItems.length > 1 && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => removeKhakhraItem(index)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeKhakhraItem(index)}
+                      className="col-span-full sm:col-span-1"
+                    >
                       <X className="h-4 w-4" />
                     </Button>
                   )}
@@ -513,13 +540,16 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                 <span>{calculateTotal()}</span>
               </div>
             </div>
-            <div className="flex items-center justify-between text-lg font-semibold text-green-600">
-              <span>Total Profit:</span>
-              <div className="flex items-center gap-1">
-                <IndianRupee className="h-4 w-4" />
-                <span>{calculateTotalProfit()}</span>
-              </div>
+            {/* Remove this block */}
+            {/*
+          <div className="flex items-center justify-between text-lg font-semibold text-green-600">
+            <span>Total Profit:</span>
+            <div className="flex items-center gap-1">
+              <IndianRupee className="h-4 w-4" />
+              <span>{calculateTotalProfit()}</span>
             </div>
+          </div>
+          */}
           </div>
 
           <div className="flex justify-end gap-2">

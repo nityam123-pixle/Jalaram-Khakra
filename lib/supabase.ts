@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 
 const supabaseUrl = "https://gpynpjedcwbbpkyyuvga.supabase.co"
 const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdweW5wamVkY3diYnBreXl1dmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODYxMjIsImV4cCI6MjA2NjI2MjEyMn0.RwPy2ttONchySm3eaVgmhOsMd5eT1SKGOThRevDMJ2k"
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdweW5wamVkY3diYnBreXl1dmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODYxMjIsImV4cCI6MjA2NjI2MjEyMn0.RwPy2ttONchySm3eaVgmhOsMd5eT1SKGOThRevDMJ2k"
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
@@ -36,7 +36,7 @@ export type KhakhraItem = {
   price_per_packet?: number
 }
 
-// Updated Khakhra types with dynamic pricing ranges
+// Updated Khakhra types with dynamic pricing ranges and new Farali category
 export const KHAKHRA_TYPES = [
   // Regular Khakhra - ₹200-225/kg (profit: ₹20-45)
   {
@@ -208,7 +208,7 @@ export const KHAKHRA_TYPES = [
     category: "bhakri" as const,
     basePrice: 225, // ₹45 per 200g = ₹225 per kg
     maxPrice: 250, // ₹50 per 200g = ₹250 per kg
-    baseProfit: 35, // ₹7 per 200g = ₹35 per kg
+    baseProfit: 35, // ₹7 per 200g = ₹35 per kg (₹45-₹38=₹7 profit per 200g)
     sellBy: "both" as const,
     basePacketPrice: 45,
     maxPacketPrice: 50,
@@ -247,6 +247,44 @@ export const KHAKHRA_TYPES = [
     maxPacketPrice: 50,
     basePacketProfit: 7,
   },
+
+  // NEW: Farali Khakhra - sold by packets (200g) or kg
+  {
+    name: "Farali Khakhra Regular",
+    category: "farali" as const,
+    basePacketPrice: 45, // Selling price
+    maxPacketPrice: 50, // Assuming a range for flexibility
+    basePacketCost: 40, // Our price
+    basePacketProfit: 5, // 45 - 40 = 5
+    basePrice: 225, // 45 * 5 packets/kg = 225
+    maxPrice: 250, // 50 * 5 packets/kg = 250
+    baseProfit: 25, // 5 * 5 packets/kg = 25
+    sellBy: "both" as const,
+  },
+  {
+    name: "Farali Khakhra Masala",
+    category: "farali" as const,
+    basePacketPrice: 45,
+    maxPacketPrice: 50,
+    basePacketCost: 40,
+    basePacketProfit: 5,
+    basePrice: 225,
+    maxPrice: 250,
+    baseProfit: 25,
+    sellBy: "both" as const,
+  },
+  {
+    name: "Farali Bhakari Container",
+    category: "farali" as const,
+    basePacketPrice: 60, // Selling price
+    maxPacketPrice: 65, // Assuming a range for flexibility
+    basePacketCost: 55, // Our price
+    basePacketProfit: 5, // 60 - 55 = 5
+    basePrice: 300, // 60 * 5 packets/kg = 300
+    maxPrice: 325, // 65 * 5 packets/kg = 325
+    baseProfit: 25, // 5 * 5 packets/kg = 25
+    sellBy: "both" as const,
+  },
 ]
 
 // Updated cities for your father's business coverage
@@ -274,9 +312,9 @@ export const CITIES = [
 ]
 
 // Patra pricing range
-export const PATRA_PRICE_MIN = 75
-export const PATRA_PRICE_MAX = 85
-export const PATRA_PRICE = 80
+export const PATRA_PRICE_MIN = 75 // Updated min price
+export const PATRA_PRICE_MAX = 85 // Updated max price
+export const PATRA_PRICE = 80 // Default price, still within range
 
 // Helper functions for dynamic pricing
 export const calculateDynamicProfit = (
@@ -284,10 +322,10 @@ export const calculateDynamicProfit = (
   actualPrice: number,
   isPacket = false,
 ): number => {
-  if (isPacket && khakhraType.category === "bhakri") {
-    // For packet-based Bhakri: profit increases by ₹1 for every ₹1 increase from base packet price
-    const basePacketPrice = khakhraType.basePacketPrice || 45
-    const basePacketProfit = khakhraType.basePacketProfit || 7
+  if (isPacket && (khakhraType.category === "bhakri" || khakhraType.category === "farali")) {
+    // For packet-based Bhakri/Farali: profit increases by ₹1 for every ₹1 increase from base packet price
+    const basePacketPrice = khakhraType.basePacketPrice || 0
+    const basePacketProfit = khakhraType.basePacketProfit || 0
     return basePacketProfit + (actualPrice - basePacketPrice)
   } else {
     // For kg-based items: profit increases by ₹1 for every ₹1 increase from base price
@@ -296,9 +334,9 @@ export const calculateDynamicProfit = (
 }
 
 export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket = false): number[] => {
-  if (isPacket && khakhraType.category === "bhakri") {
-    const basePacketPrice = khakhraType.basePacketPrice || 45
-    const maxPacketPrice = khakhraType.maxPacketPrice || 50
+  if (isPacket && (khakhraType.category === "bhakri" || khakhraType.category === "farali")) {
+    const basePacketPrice = khakhraType.basePacketPrice || 0
+    const maxPacketPrice = khakhraType.maxPacketPrice || 0
     return Array.from({ length: maxPacketPrice - basePacketPrice + 1 }, (_, i) => basePacketPrice + i)
   } else {
     return Array.from({ length: khakhraType.maxPrice - khakhraType.basePrice + 1 }, (_, i) => khakhraType.basePrice + i)
@@ -307,10 +345,13 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
 
 // Add dynamic patra profit calculation function
 export const calculatePatraProfit = (pricePerPacket: number): number => {
-  if (pricePerPacket <= 75) return 5
-  if (pricePerPacket >= 85) return 16
-  // Linear interpolation for prices between 75-85
-  return Math.round(6 + ((pricePerPacket - 75) / 5) * 5)
+  // Assuming cost of Patra is 64. Profit = price - cost.
+  // At 75, profit = 75 - 64 = 11
+  // At 85, profit = 85 - 64 = 21
+  // Profit increases by 1 for every 1 rupee increase in price.
+  const basePatraPrice = 75
+  const basePatraProfit = 11
+  return basePatraProfit + (pricePerPacket - basePatraPrice)
 }
 
 // Update the calculateOrderProfit function to handle dynamic pricing
@@ -338,7 +379,7 @@ export const calculateOrderProfit = (order: Order): number => {
 
   // Add patra profit with dynamic calculation
   if (order.wants_patra) {
-    const patraPrice = order.patra_price_per_packet || 80
+    const patraPrice = order.patra_price_per_packet || PATRA_PRICE_MIN
     const profitPerPacket = calculatePatraProfit(patraPrice)
     profit += order.patra_packets * profitPerPacket
   }
@@ -351,8 +392,9 @@ export const getKhakhraTypesByCategory = () => {
   const regular = KHAKHRA_TYPES.filter((k) => k.category === "regular")
   const premium = KHAKHRA_TYPES.filter((k) => k.category === "premium")
   const bhakri = KHAKHRA_TYPES.filter((k) => k.category === "bhakri")
+  const farali = KHAKHRA_TYPES.filter((k) => k.category === "farali")
 
-  return { regular, premium, bhakri }
+  return { regular, premium, bhakri, farali }
 }
 
 // Helper function to calculate packet equivalent
