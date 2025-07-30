@@ -6,7 +6,7 @@ import { StatsCard } from "@/components/stats-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { calculateOrderProfit, type Order, supabase } from "@/lib/supabase"
-import { CheckCircle, Clock, Plus, ShoppingCart, TrendingUp, IndianRupee } from "lucide-react"
+import { CheckCircle, Clock, Plus, ShoppingCart, TrendingUp, IndianRupee, Package, ShoppingBag } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export default function Dashboard() {
@@ -17,7 +17,10 @@ export default function Dashboard() {
     pending: 0,
     completed: 0,
     totalEarnings: 0,
-    totalProfit: 0,
+    totalKhakhraProfit: 0,
+    totalPatraProfit: 0,
+    totalKhakhraSold: 0,
+    totalPatraSold: 0,
   })
 
   const fetchOrders = async () => {
@@ -39,14 +42,29 @@ export default function Dashboard() {
       const pending = data?.filter((order) => order.status === "pending").length || 0
       const completed = data?.filter((order) => order.status === "completed").length || 0
       const totalEarnings = data?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0
-      const totalProfit = data?.reduce((sum, order) => sum + calculateOrderProfit(order), 0) || 0
+
+      let totalKhakhraProfit = 0
+      let totalPatraProfit = 0
+      let totalKhakhraSold = 0
+      let totalPatraSold = 0
+
+      data?.forEach((order) => {
+        const { khakhraProfit, patraProfit } = calculateOrderProfit(order)
+        totalKhakhraProfit += khakhraProfit
+        totalPatraProfit += patraProfit
+        totalKhakhraSold += order.total_khakhra_kg || 0
+        totalPatraSold += order.patra_packets || 0
+      })
 
       setStats({
         total,
         pending,
         completed,
         totalEarnings,
-        totalProfit,
+        totalKhakhraProfit: Math.round(totalKhakhraProfit),
+        totalPatraProfit: Math.round(totalPatraProfit),
+        totalKhakhraSold: Math.round(totalKhakhraSold * 10) / 10, // Round to 1 decimal place
+        totalPatraSold,
       })
     } catch (error) {
       console.error("Error fetching orders:", error)
@@ -125,16 +143,35 @@ export default function Dashboard() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300 text-base sm:text-lg">
               <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
-              Total Profit
+              Overall Profit
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
-              ₹{stats.totalProfit.toLocaleString()}
+            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
+              ₹{(stats.totalKhakhraProfit + stats.totalPatraProfit).toLocaleString()} Total Profit
             </div>
-            <p className="text-xs sm:text-sm text-green-600/70 dark:text-green-400/70 mt-1">
-              Profit from all completed orders
-            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-sm text-green-700 dark:text-green-300">Khakhra Profit</p>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  ₹{stats.totalKhakhraProfit.toLocaleString()}
+                </div>
+                <p className="text-xs text-green-600/70 dark:text-green-400/70">
+                  <Package className="inline-block h-3 w-3 mr-1" />
+                  {stats.totalKhakhraSold} kg sold
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-green-700 dark:text-green-300">Patra Profit</p>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  ₹{stats.totalPatraProfit.toLocaleString()}
+                </div>
+                <p className="text-xs text-green-600/70 dark:text-green-400/70">
+                  <ShoppingBag className="inline-block h-3 w-3 mr-1" />
+                  {stats.totalPatraSold} packets sold
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -206,7 +243,10 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs sm:text-sm text-muted-foreground">Profit Margin</span>
                   <span className="font-medium text-sm text-green-600 dark:text-green-400">
-                    {stats.totalEarnings > 0 ? Math.round((stats.totalProfit / stats.totalEarnings) * 100) : 0}%
+                    {stats.totalEarnings > 0
+                      ? Math.round(((stats.totalKhakhraProfit + stats.totalPatraProfit) / stats.totalEarnings) * 100)
+                      : 0}
+                    %
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

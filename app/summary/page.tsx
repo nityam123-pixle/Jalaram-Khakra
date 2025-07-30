@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { calculateOrderProfit, CITIES, type Order, supabase } from "@/lib/supabase"
-import { Search, Users, ShoppingCart, TrendingUp, MapPin, Package, IndianRupee } from "lucide-react"
+import { Search, Users, ShoppingCart, TrendingUp, MapPin, Package, IndianRupee, ShoppingBag } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -15,7 +15,8 @@ interface CustomerSummary {
   city: string
   totalOrders: number
   totalAmount: number
-  totalProfit: number
+  totalKhakhraProfit: number
+  totalPatraProfit: number
   totalKhakhraKg: number
   totalPatraPackets: number
   orders: Order[]
@@ -64,6 +65,7 @@ export default function SummaryPage() {
 
     orders.forEach((order) => {
       const key = `${order.shop_name}-${order.city}`
+      const { khakhraProfit, patraProfit } = calculateOrderProfit(order)
 
       if (!customerMap.has(key)) {
         customerMap.set(key, {
@@ -71,7 +73,8 @@ export default function SummaryPage() {
           city: order.city,
           totalOrders: 0,
           totalAmount: 0,
-          totalProfit: 0,
+          totalKhakhraProfit: 0,
+          totalPatraProfit: 0,
           totalKhakhraKg: 0,
           totalPatraPackets: 0,
           orders: [],
@@ -82,7 +85,8 @@ export default function SummaryPage() {
       const customer = customerMap.get(key)!
       customer.totalOrders += 1
       customer.totalAmount += order.total_amount || 0
-      customer.totalProfit += calculateOrderProfit(order)
+      customer.totalKhakhraProfit += khakhraProfit
+      customer.totalPatraProfit += patraProfit
       customer.totalKhakhraKg += order.total_khakhra_kg || 0
       customer.totalPatraPackets += order.patra_packets || 0
       customer.orders.push(order)
@@ -114,7 +118,7 @@ export default function SummaryPage() {
         case "amount":
           return b.totalAmount - a.totalAmount
         case "profit":
-          return b.totalProfit - a.totalProfit
+          return b.totalKhakhraProfit + b.totalPatraProfit - (a.totalKhakhraProfit + a.totalPatraProfit)
         case "recent":
           return new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
         default:
@@ -123,11 +127,22 @@ export default function SummaryPage() {
     })
 
   // Calculate overall stats
+  let overallKhakhraProfit = 0
+  let overallPatraProfit = 0
+  orders.forEach((order) => {
+    const { khakhraProfit, patraProfit } = calculateOrderProfit(order)
+    overallKhakhraProfit += khakhraProfit
+    overallPatraProfit += patraProfit
+  })
+
   const overallStats = {
     totalCustomers: customerSummaries.length,
     totalOrders: orders.length,
     totalRevenue: orders.reduce((sum, order) => sum + (order.total_amount || 0), 0),
-    totalProfit: orders.reduce((sum, order) => sum + calculateOrderProfit(order), 0),
+    totalKhakhraProfit: Math.round(overallKhakhraProfit),
+    totalPatraProfit: Math.round(overallPatraProfit),
+    totalKhakhraSold: Math.round(orders.reduce((sum, order) => sum + order.total_khakhra_kg, 0) * 10) / 10,
+    totalPatraSold: orders.reduce((sum, order) => sum + order.patra_packets, 0),
     avgOrdersPerCustomer:
       customerSummaries.length > 0 ? Math.round((orders.length / customerSummaries.length) * 10) / 10 : 0,
     topCustomer: filteredCustomers[0] || null,
@@ -211,6 +226,43 @@ export default function SummaryPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Overall Profit & Sales Card */}
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300 text-base sm:text-lg">
+              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
+              Overall Profit & Sales
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
+              ₹{(overallStats.totalKhakhraProfit + overallStats.totalPatraProfit).toLocaleString()} Total Profit
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-sm text-green-700 dark:text-green-300">Khakhra Profit</p>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  ₹{overallStats.totalKhakhraProfit.toLocaleString()}
+                </div>
+                <p className="text-xs text-green-600/70 dark:text-green-400/70">
+                  <Package className="inline-block h-3 w-3 mr-1" />
+                  {overallStats.totalKhakhraSold} kg sold
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-green-700 dark:text-green-300">Patra Profit</p>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  ₹{overallStats.totalPatraProfit.toLocaleString()}
+                </div>
+                <p className="text-xs text-green-600/70 dark:text-green-400/70">
+                  <ShoppingBag className="inline-block h-3 w-3 mr-1" />
+                  {overallStats.totalPatraSold} packets sold
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Top Customer Highlight */}
         {overallStats.topCustomer && (
@@ -322,21 +374,28 @@ export default function SummaryPage() {
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-blue-600" />
                       <div>
-                        <p className="text-muted-foreground">Profit</p>
-                        <p className="font-semibold">₹{customer.totalProfit.toLocaleString()}</p>
+                        <p className="text-muted-foreground">Khakhra Profit</p>
+                        <p className="font-semibold">₹{Math.round(customer.totalKhakhraProfit).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-purple-600" />
+                      <div>
+                        <p className="text-muted-foreground">Patra Profit</p>
+                        <p className="font-semibold">₹{Math.round(customer.totalPatraProfit).toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Package className="h-4 w-4 text-orange-600" />
                       <div>
-                        <p className="text-muted-foreground">Khakhra</p>
+                        <p className="text-muted-foreground">Khakhra Sold</p>
                         <p className="font-semibold">{customer.totalKhakhraKg} kg</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <ShoppingCart className="h-4 w-4 text-purple-600" />
+                      <ShoppingCart className="h-4 w-4 text-red-600" />
                       <div>
-                        <p className="text-muted-foreground">Patra</p>
+                        <p className="text-muted-foreground">Patra Sold</p>
                         <p className="font-semibold">{customer.totalPatraPackets} packets</p>
                       </div>
                     </div>

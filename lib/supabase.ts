@@ -346,21 +346,24 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
 // Add dynamic patra profit calculation function
 export const calculatePatraProfit = (pricePerPacket: number): number => {
   // Assuming cost of Patra is 64. Profit = price - cost.
-  // At 80, profit = 80 - 64 = 16 (new base)
-  // At 85, profit = 85 - 64 = 21
+  // At 80, profit = 80 - 68 = 12 (new base)
+  // At 85, profit = 85 - 68 = 17
   // Profit increases by 1 for every 1 rupee increase in price.
   const basePatraPrice = 80 // Updated base price for profit calculation
-  const basePatraProfit = 16 // Updated base profit for 80
+  const basePatraProfit = 12 // Updated base profit for 80
   return basePatraProfit + (pricePerPacket - basePatraPrice)
 }
 
-// Update the calculateOrderProfit function to handle dynamic pricing
-export const calculateOrderProfit = (order: Order): number => {
-  let profit = 0
+// Update the calculateOrderProfit function to return separate profits
+export const calculateOrderProfit = (
+  order: Order,
+): { khakhraProfit: number; patraProfit: number; totalProfit: number } => {
+  let khakhraProfit = 0
+  let patraProfit = 0
 
   // Calculate khakhra profit with dynamic pricing
   if (order.khakhra_items) {
-    profit += order.khakhra_items.reduce((sum, item) => {
+    khakhraProfit += order.khakhra_items.reduce((sum, item) => {
       const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
 
       if (!khakhraType) return sum
@@ -381,10 +384,10 @@ export const calculateOrderProfit = (order: Order): number => {
   if (order.wants_patra) {
     const patraPrice = order.patra_price_per_packet || PATRA_PRICE_MIN
     const profitPerPacket = calculatePatraProfit(patraPrice)
-    profit += order.patra_packets * profitPerPacket
+    patraProfit += order.patra_packets * profitPerPacket
   }
 
-  return profit
+  return { khakhraProfit, patraProfit, totalProfit: khakhraProfit + patraProfit }
 }
 
 // Helper function to get khakhra types by category
