@@ -14,6 +14,8 @@ import {
   KHAKHRA_TYPES,
   PATRA_PRICE_MIN,
   PATRA_PRICE_MAX,
+  BHAKARWADI_PRICE_MIN,
+  BHAKARWADI_PRICE_MAX,
   supabase,
   type Order,
   getPriceRange,
@@ -50,6 +52,9 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
   const [wantsPatra, setWantsPatra] = useState(false)
   const [patraPackets, setPatraPackets] = useState(0)
   const [patraPrice, setPatraPrice] = useState(PATRA_PRICE_MIN) // Default to min patra price
+  const [wantsBhakarwadi, setWantsBhakarwadi] = useState(false)
+  const [bhakarwadiPackets, setBhakarwadiPackets] = useState(0)
+  const [bhakarwadiPrice, setBhakarwadiPrice] = useState(BHAKARWADI_PRICE_MIN)
 
   // Populate form when order changes
   useEffect(() => {
@@ -61,6 +66,9 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
       setPatraPackets(order.patra_packets)
       // Handle both new and old orders - fallback to min price if column doesn't exist
       setPatraPrice(order.patra_price_per_packet || PATRA_PRICE_MIN)
+      setWantsBhakarwadi(order.wants_bhakarwadi)
+      setBhakarwadiPackets(order.bhakarwadi_packets)
+      setBhakarwadiPrice(order.bhakarwadi_price_per_packet || BHAKARWADI_PRICE_MIN)
 
       if (order.khakhra_items && order.khakhra_items.length > 0) {
         setKhakhraItems(
@@ -168,7 +176,8 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
     })
 
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
-    return khakhraTotal + patraTotal
+    const bhakarwadiTotal = wantsBhakarwadi ? bhakarwadiPackets * (bhakarwadiPrice || BHAKARWADI_PRICE_MIN) : 0
+    return khakhraTotal + patraTotal + bhakarwadiTotal
   }
 
   const calculateTotalProfit = () => {
@@ -184,7 +193,19 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
             ? 11
             : Math.round(11 + ((patraPrice - PATRA_PRICE_MIN) / (PATRA_PRICE_MAX - PATRA_PRICE_MIN)) * 10))
       : 0
-    return khakhraProfit + patraProfit
+
+    const bhakarwadiProfit = wantsBhakarwadi
+      ? bhakarwadiPackets *
+        (bhakarwadiPrice >= BHAKARWADI_PRICE_MAX
+          ? 21
+          : bhakarwadiPrice <= BHAKARWADI_PRICE_MIN
+            ? 11
+            : Math.round(
+                11 + ((bhakarwadiPrice - BHAKARWADI_PRICE_MIN) / (BHAKARWADI_PRICE_MAX - BHAKARWADI_PRICE_MIN)) * 10,
+              ))
+      : 0
+
+    return khakhraProfit + patraProfit + bhakarwadiProfit
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -210,11 +231,11 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
           (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
       )
 
-      // Check if order has either Khakhra items OR Patra
-      if (validKhakhraItems.length === 0 && !wantsPatra) {
+      // Check if order has either Khakhra items OR Patra OR Bhakarwadi
+      if (validKhakhraItems.length === 0 && !wantsPatra && !wantsBhakarwadi) {
         toast({
           title: "Error",
-          description: "Please add at least one Khakhra item or select Patra",
+          description: "Please add at least one Khakhra item, select Patra, or select Bhakarwadi",
           variant: "destructive",
         })
         return
@@ -225,6 +246,16 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
         toast({
           title: "Error",
           description: "Please specify the number of Patra packets",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // If only Bhakarwadi is selected, validate Bhakarwadi quantity
+      if (wantsBhakarwadi && bhakarwadiPackets <= 0) {
+        toast({
+          title: "Error",
+          description: "Please specify the number of Bhakarwadi packets",
           variant: "destructive",
         })
         return
@@ -246,6 +277,8 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
         city,
         wants_patra: wantsPatra,
         patra_packets: wantsPatra ? patraPackets : 0,
+        wants_bhakarwadi: wantsBhakarwadi,
+        bhakarwadi_packets: wantsBhakarwadi ? bhakarwadiPackets : 0,
         total_khakhra_kg: totalKhakhraKg,
         total_amount: totalAmount,
       }
@@ -255,6 +288,13 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
         updateData.patra_price_per_packet = patraPrice || PATRA_PRICE_MIN
       } catch (error) {
         console.log("patra_price_per_packet column not available yet")
+      }
+
+      // Try to include bhakarwadi_price_per_packet
+      try {
+        updateData.bhakarwadi_price_per_packet = bhakarwadiPrice || BHAKARWADI_PRICE_MIN
+      } catch (error) {
+        console.log("bhakarwadi_price_per_packet column not available yet")
       }
 
       // Update order
@@ -425,6 +465,60 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
             )}
           </div>
 
+          {/* Bhakarwadi Option */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Bhakarwadi Option</h3>
+            <div className="flex items-center space-x-2">
+              <Switch id="wantsBhakarwadi" checked={wantsBhakarwadi} onCheckedChange={setWantsBhakarwadi} />
+              <Label htmlFor="wantsBhakarwadi">
+                Customer wants Bhakarwadi (₹{BHAKARWADI_PRICE_MIN}-₹{BHAKARWADI_PRICE_MAX} per packet)
+              </Label>
+            </div>
+            {wantsBhakarwadi && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bhakarwadiPackets">Number of packets *</Label>
+                  <Input
+                    id="bhakarwadiPackets"
+                    type="number"
+                    min="1"
+                    value={bhakarwadiPackets}
+                    onChange={(e) => setBhakarwadiPackets(Number.parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    required={wantsBhakarwadi}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bhakarwadiPrice">Price per packet</Label>
+                  <Select
+                    value={bhakarwadiPrice.toString()}
+                    onValueChange={(value) => setBhakarwadiPrice(Number.parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from(
+                        { length: BHAKARWADI_PRICE_MAX - BHAKARWADI_PRICE_MIN + 1 },
+                        (_, i) => BHAKARWADI_PRICE_MIN + i,
+                      ).map((price) => (
+                        <SelectItem key={price} value={price.toString()}>
+                          ₹{price}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Total</Label>
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
+                    ₹{bhakarwadiPackets * bhakarwadiPrice}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Khakhra Selection - Made optional */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -454,7 +548,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
                         <SelectValue placeholder="Select khakhra type (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        {KHAKHRA_TYPES.map((type) => (
+                        {KHAKHRA_TYPES.filter((type) => type.category !== "bhakarwadi").map((type) => (
                           <SelectItem key={type.name} value={type.name}>
                             {type.name} - ₹{type.basePrice}
                             {type.maxPrice > type.basePrice ? `-${type.maxPrice}` : ""}/kg

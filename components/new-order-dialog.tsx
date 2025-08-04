@@ -48,6 +48,17 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const [wantsPatra, setWantsPatra] = useState(false)
   const [patraPackets, setPatraPackets] = useState(0)
   const [patraPrice, setPatraPrice] = useState(PATRA_PRICE_MIN) // Default to min patra price
+  const [wantsBhakarwadi, setWantsBhakarwadi] = useState(false)
+  const [bhakarwadiItems, setBhakarwadiItems] = useState<
+    {
+      type: string
+      quantity: number
+      price: number
+      sellBy: "kg" | "packet"
+      packetQuantity?: number
+      packetPrice?: number
+    }[]
+  >([])
 
   const addKhakhraItem = () => {
     setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200, sellBy: "kg" }])
@@ -120,13 +131,68 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     })
   }
 
+  const addBhakarwadiItem = () => {
+    setBhakarwadiItems([...bhakarwadiItems, { type: "", quantity: 0, price: 160, sellBy: "kg" }])
+  }
+
+  const removeBhakarwadiItem = (index: number) => {
+    if (bhakarwadiItems.length > 1) {
+      setBhakarwadiItems(bhakarwadiItems.filter((_, i) => i !== index))
+    }
+  }
+
+  const updateBhakarwadiItem = (index: number, field: string, value: any) => {
+    setBhakarwadiItems((prev) => {
+      const updated = [...prev]
+      const currentItem = { ...updated[index] }
+
+      if (field === "type") {
+        const bhakarwadiType = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "bhakarwadi")
+        currentItem.type = value
+        currentItem.sellBy = "packet" // Default to packet for Bhakarwadi
+        currentItem.price = 160 // Default kg price
+        currentItem.packetPrice = 60 // Fixed MRP
+        currentItem.quantity = 0
+        currentItem.packetQuantity = 0
+      } else if (field === "sellBy") {
+        currentItem.sellBy = value
+        currentItem.quantity = 0
+        currentItem.packetQuantity = 0
+        if (value === "packet") {
+          currentItem.packetPrice = 60
+        } else {
+          currentItem.price = 160 // Default to minimum kg price
+        }
+      } else {
+        currentItem[field] = value
+      }
+
+      updated[index] = currentItem
+      return updated
+    })
+  }
+
+  const calculateBhakarwadiItemTotal = (item: any) => {
+    if (!item.type) return 0
+    if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
+      return item.packetQuantity * item.packetPrice
+    } else if (item.quantity > 0) {
+      return item.quantity * item.price
+    }
+    return 0
+  }
+
   const calculateTotal = () => {
     const khakhraTotal = khakhraItems.reduce((sum, item) => {
       return sum + calculateItemTotal(item)
     }, 0)
 
+    const bhakarwadiTotal = bhakarwadiItems.reduce((sum, item) => {
+      return sum + calculateBhakarwadiItemTotal(item)
+    }, 0)
+
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
-    return khakhraTotal + patraTotal
+    return khakhraTotal + bhakarwadiTotal + patraTotal
   }
 
   const calculateTotalProfit = () => {
@@ -153,6 +219,8 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     setWantsPatra(false)
     setPatraPackets(0)
     setPatraPrice(PATRA_PRICE_MIN)
+    setWantsBhakarwadi(false)
+    setBhakarwadiItems([])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -176,11 +244,17 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
           (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
       )
 
-      // Check if order has either Khakhra items OR Patra
-      if (validKhakhraItems.length === 0 && !wantsPatra) {
+      const validBhakarwadiItems = bhakarwadiItems.filter(
+        (item) =>
+          item.type &&
+          (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
+      )
+
+      // Check if order has at least one item
+      if (validKhakhraItems.length === 0 && validBhakarwadiItems.length === 0 && !wantsPatra) {
         toast({
           title: "Error",
-          description: "Please add at least one Khakhra item or select Patra",
+          description: "Please add at least one item or select Patra",
           variant: "destructive",
         })
         return
@@ -196,13 +270,21 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         return
       }
 
-      const totalKhakhraKg = validKhakhraItems.reduce((sum, item) => {
-        if (item.sellBy === "packet") {
-          return sum + (item.packetQuantity || 0) * 0.2
-        } else {
-          return sum + item.quantity
-        }
-      }, 0)
+      const totalKhakhraKg =
+        validKhakhraItems.reduce((sum, item) => {
+          if (item.sellBy === "packet") {
+            return sum + (item.packetQuantity || 0) * 0.2
+          } else {
+            return sum + item.quantity
+          }
+        }, 0) +
+        validBhakarwadiItems.reduce((sum, item) => {
+          if (item.sellBy === "packet") {
+            return sum + (item.packetQuantity || 0) * 0.2
+          } else {
+            return sum + item.quantity
+          }
+        }, 0)
       const totalAmount = calculateTotal()
 
       // Prepare insert object
@@ -230,37 +312,67 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
       if (orderError) throw orderError
 
       // Insert khakhra items only if there are valid items
-      if (validKhakhraItems.length > 0) {
-        const khakhraItemsToInsert = validKhakhraItems.map((item) => {
-          const baseItem = {
-            order_id: order.id,
-            khakhra_type: item.type,
-          }
-
-          if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
-            return {
-              ...baseItem,
-              quantity_kg: item.packetQuantity * 0.2, // Convert packets to kg for storage
-              total_price: item.packetQuantity * item.packetPrice,
-              is_packet_item: true,
-              packet_quantity: item.packetQuantity,
-              price_per_packet: item.packetPrice,
-              price_per_kg: KHAKHRA_TYPES.find((t) => t.name === item.type)?.basePrice || 0, // Store base kg price for consistency
+      if (validKhakhraItems.length > 0 || validBhakarwadiItems.length > 0) {
+        const allItemsToInsert = [
+          ...validKhakhraItems.map((item) => {
+            const baseItem = {
+              order_id: order.id,
+              khakhra_type: item.type,
             }
-          } else {
-            return {
-              ...baseItem,
-              quantity_kg: item.quantity,
-              total_price: item.quantity * item.price,
-              is_packet_item: false,
-              packet_quantity: 0,
-              price_per_packet: 0,
-              price_per_kg: item.price,
-            }
-          }
-        })
 
-        const { error: itemsError } = await supabase.from("khakhra_items").insert(khakhraItemsToInsert)
+            if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
+              return {
+                ...baseItem,
+                quantity_kg: item.packetQuantity * 0.2, // Convert packets to kg for storage
+                total_price: item.packetQuantity * item.packetPrice,
+                is_packet_item: true,
+                packet_quantity: item.packetQuantity,
+                price_per_packet: item.packetPrice,
+                price_per_kg: KHAKHRA_TYPES.find((t) => t.name === item.type)?.basePrice || 0, // Store base kg price for consistency
+              }
+            } else {
+              return {
+                ...baseItem,
+                quantity_kg: item.quantity,
+                total_price: item.quantity * item.price,
+                is_packet_item: false,
+                packet_quantity: 0,
+                price_per_packet: 0,
+                price_per_kg: item.price,
+              }
+            }
+          }),
+          ...validBhakarwadiItems.map((item) => {
+            const baseItem = {
+              order_id: order.id,
+              khakhra_type: item.type,
+            }
+
+            if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
+              return {
+                ...baseItem,
+                quantity_kg: item.packetQuantity * 0.2,
+                total_price: item.packetQuantity * item.packetPrice,
+                is_packet_item: true,
+                packet_quantity: item.packetQuantity,
+                price_per_packet: item.packetPrice,
+                price_per_kg: KHAKHRA_TYPES.find((t) => t.name === item.type)?.basePrice || 160,
+              }
+            } else {
+              return {
+                ...baseItem,
+                quantity_kg: item.quantity,
+                total_price: item.quantity * item.price,
+                is_packet_item: false,
+                packet_quantity: 0,
+                price_per_packet: 0,
+                price_per_kg: item.price,
+              }
+            }
+          }),
+        ]
+
+        const { error: itemsError } = await supabase.from("khakhra_items").insert(allItemsToInsert)
 
         if (itemsError) throw itemsError
       }
@@ -388,6 +500,137 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
             )}
           </div>
 
+          {/* Bhakarwadi Option */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Bhakarwadi Option</h3>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="wantsBhakarwadi"
+                checked={wantsBhakarwadi}
+                onCheckedChange={(checked) => {
+                  setWantsBhakarwadi(checked)
+                  if (checked && bhakarwadiItems.length === 0) {
+                    setBhakarwadiItems([{ type: "", quantity: 0, price: 160, sellBy: "packet" }])
+                  }
+                }}
+              />
+              <Label htmlFor="wantsBhakarwadi">Customer wants Bhakarwadi (₹60 per packet or ₹160-200 per kg)</Label>
+            </div>
+            {wantsBhakarwadi && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Add Bhakarwadi items with flexible pricing</p>
+                  <Button type="button" onClick={addBhakarwadiItem} size="sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Bhakarwadi
+                  </Button>
+                </div>
+                {bhakarwadiItems.map((item, index) => {
+                  const bhakarwadiTypes = KHAKHRA_TYPES.filter((t) => t.category === "bhakarwadi")
+                  const selectedType = bhakarwadiTypes.find((t) => t.name === item.type)
+
+                  return (
+                    <div
+                      key={index}
+                      className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 p-3 border rounded-lg items-end"
+                    >
+                      <div className="space-y-2">
+                        <Label>Bhakarwadi Type</Label>
+                        <Select value={item.type} onValueChange={(value) => updateBhakarwadiItem(index, "type", value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bhakarwadiTypes.map((type) => (
+                              <SelectItem key={type.name} value={type.name}>
+                                {type.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Sell By</Label>
+                        <Select
+                          value={item.sellBy}
+                          onValueChange={(value) => updateBhakarwadiItem(index, "sellBy", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="packet">Per Packet (₹60)</SelectItem>
+                            <SelectItem value="kg">Per Kg (₹160-200)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Add Price Selection for kg sales */}
+                      {item.sellBy === "kg" && selectedType && (
+                        <div className="space-y-2">
+                          <Label>Price per kg</Label>
+                          <Select
+                            value={item.price?.toString() || ""}
+                            onValueChange={(value) => updateBhakarwadiItem(index, "price", Number.parseInt(value))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select price" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 41 }, (_, i) => 160 + i).map((price) => (
+                                <SelectItem key={price} value={price.toString()}>
+                                  ₹{price}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <Label>{item.sellBy === "packet" ? "Packets" : "Quantity (kg)"}</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step={item.sellBy === "packet" ? "1" : "0.5"}
+                          value={item.sellBy === "packet" ? item.packetQuantity || 0 : item.quantity}
+                          onChange={(e) => {
+                            const value =
+                              item.sellBy === "packet"
+                                ? Number.parseInt(e.target.value) || 0
+                                : Number.parseFloat(e.target.value) || 0
+                            updateBhakarwadiItem(index, item.sellBy === "packet" ? "packetQuantity" : "quantity", value)
+                          }}
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Total</Label>
+                        <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
+                          ₹{calculateBhakarwadiItemTotal(item)}
+                        </div>
+                      </div>
+
+                      {bhakarwadiItems.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeBhakarwadiItem(index)}
+                          className="col-span-full sm:col-span-1"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Khakhra Selection */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -417,7 +660,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                         <SelectValue placeholder="Select khakhra type (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        {KHAKHRA_TYPES.map((type) => (
+                        {KHAKHRA_TYPES.filter((type) => type.category !== "bhakarwadi").map((type) => (
                           <SelectItem key={type.name} value={type.name}>
                             {type.name} - ₹{type.basePrice}
                             {type.maxPrice > type.basePrice ? `-${type.maxPrice}` : ""}/kg
