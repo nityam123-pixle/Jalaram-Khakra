@@ -15,6 +15,9 @@ export type Order = {
   wants_patra: boolean
   patra_packets: number
   patra_price_per_packet?: number
+  wants_fulvadi?: boolean
+  fulvadi_packets?: number
+  fulvadi_price_per_packet?: number
   total_khakhra_kg: number
   total_amount: number
   created_at: string
@@ -274,6 +277,21 @@ export const KHAKHRA_TYPES = [
     basePacketCost: 27,
   },
 
+  // NEW: Fulvadi varieties - ₹90 per 500g packet (profit: ₹10 per packet)
+  {
+    name: "Fulvadi",
+    category: "fulvadi" as const,
+    basePrice: 180, // ₹90 per 500g = ₹180 per kg
+    maxPrice: 180, // Fixed price
+    baseProfit: 20, // ₹10 per 500g = ₹20 per kg
+    sellBy: "packet" as const,
+    basePacketPrice: 90, // Selling price per 500g packet
+    maxPacketPrice: 90, // Fixed MRP
+    basePacketProfit: 10, // ₹90 - ₹80 = ₹10 profit per packet
+    basePacketCost: 80, // Our price per 500g packet
+    packetWeight: 0.5, // 500g = 0.5kg
+  },
+
   // Farali Khakhra - sold by packets (200g) or kg
   {
     name: "Farali Khakhra Regular",
@@ -335,12 +353,23 @@ export const CITIES = [
   "Chittal",
   "Monpar",
   "Barwala",
+  "Lilya",
+  "Mota Devaliya",
 ]
 
 // Patra pricing range
 export const PATRA_PRICE_MIN = 80 // Updated min price to match DB constraint
 export const PATRA_PRICE_MAX = 85 // Updated max price
 export const PATRA_PRICE = 80 // Default price, still within range
+
+// NEW: Bhakarwadi pricing constants
+export const BHAKARWADI_PRICE_MIN = 160
+export const BHAKARWADI_PRICE_MAX = 200
+export const BHAKARWADI_PACKET_PRICE = 60
+
+// NEW: Fulvadi pricing constants
+export const FULVADI_PRICE_MIN = 90
+export const FULVADI_PACKET_PRICE = 90
 
 // Helper functions for dynamic pricing
 export const calculateDynamicProfit = (
@@ -350,12 +379,18 @@ export const calculateDynamicProfit = (
 ): number => {
   if (
     isPacket &&
-    (khakhraType.category === "bhakri" || khakhraType.category === "farali" || khakhraType.category === "bhakarwadi")
+    (khakhraType.category === "bhakri" ||
+      khakhraType.category === "farali" ||
+      khakhraType.category === "bhakarwadi" ||
+      khakhraType.category === "fulvadi")
   ) {
     // For packet-based items: profit calculation
     if (khakhraType.category === "bhakarwadi") {
       // Bhakarwadi has fixed MRP of ₹60, so profit is always ₹33 (₹60 - ₹27)
       return 33
+    } else if (khakhraType.category === "fulvadi") {
+      // Fulvadi has fixed MRP of ₹90, so profit is always ₹10 (₹90 - ₹80)
+      return 10
     } else {
       // For Bhakri/Farali: profit increases by ₹1 for every ₹1 increase from base packet price
       const basePacketPrice = khakhraType.basePacketPrice || 0
@@ -371,11 +406,17 @@ export const calculateDynamicProfit = (
 export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket = false): number[] => {
   if (
     isPacket &&
-    (khakhraType.category === "bhakri" || khakhraType.category === "farali" || khakhraType.category === "bhakarwadi")
+    (khakhraType.category === "bhakri" ||
+      khakhraType.category === "farali" ||
+      khakhraType.category === "bhakarwadi" ||
+      khakhraType.category === "fulvadi")
   ) {
     if (khakhraType.category === "bhakarwadi") {
       // Bhakarwadi has fixed MRP
       return [60]
+    } else if (khakhraType.category === "fulvadi") {
+      // Fulvadi has fixed MRP
+      return [90]
     } else {
       const basePacketPrice = khakhraType.basePacketPrice || 0
       const maxPacketPrice = khakhraType.maxPacketPrice || 0
@@ -384,6 +425,15 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
   } else {
     return Array.from({ length: khakhraType.maxPrice - khakhraType.basePrice + 1 }, (_, i) => khakhraType.basePrice + i)
   }
+}
+
+// Helper function to generate price options
+export const generatePriceOptions = (min: number, max: number) => {
+  const options = []
+  for (let i = min; i <= max; i++) {
+    options.push({ value: i, label: `₹${i}` })
+  }
+  return options
 }
 
 // Add dynamic patra profit calculation function
@@ -400,9 +450,10 @@ export const calculatePatraProfit = (pricePerPacket: number): number => {
 // Update the calculateOrderProfit function to return separate profits
 export const calculateOrderProfit = (
   order: Order,
-): { khakhraProfit: number; patraProfit: number; totalProfit: number } => {
+): { khakhraProfit: number; patraProfit: number; fulvadiProfit: number; totalProfit: number } => {
   let khakhraProfit = 0
   let patraProfit = 0
+  let fulvadiProfit = 0
 
   // Calculate khakhra profit with dynamic pricing
   if (order.khakhra_items) {
@@ -430,7 +481,18 @@ export const calculateOrderProfit = (
     patraProfit += order.patra_packets * profitPerPacket
   }
 
-  return { khakhraProfit, patraProfit, totalProfit: khakhraProfit + patraProfit }
+  // Add fulvadi profit with dynamic calculation
+  if (order.wants_fulvadi && order.fulvadi_packets) {
+    const fulvadiPrice = order.fulvadi_price_per_packet || FULVADI_PACKET_PRICE
+    const profitPerPacket = calculateDynamicProfit(
+      KHAKHRA_TYPES.find((k) => k.category === "fulvadi")!,
+      fulvadiPrice,
+      true,
+    )
+    fulvadiProfit += order.fulvadi_packets * profitPerPacket
+  }
+
+  return { khakhraProfit, patraProfit, fulvadiProfit, totalProfit: khakhraProfit + patraProfit + fulvadiProfit }
 }
 
 // Helper function to get khakhra types by category
@@ -440,15 +502,16 @@ export const getKhakhraTypesByCategory = () => {
   const bhakri = KHAKHRA_TYPES.filter((k) => k.category === "bhakri")
   const farali = KHAKHRA_TYPES.filter((k) => k.category === "farali")
   const bhakarwadi = KHAKHRA_TYPES.filter((k) => k.category === "bhakarwadi")
+  const fulvadi = KHAKHRA_TYPES.filter((k) => k.category === "fulvadi")
 
-  return { regular, premium, bhakri, farali, bhakarwadi }
+  return { regular, premium, bhakri, farali, bhakarwadi, fulvadi }
 }
 
 // Helper function to calculate packet equivalent
-export const convertKgToPackets = (kg: number): number => {
-  return Math.round(kg * 5) // 1kg = 5 packets of 200g
+export const convertKgToPackets = (kg: number, packetWeight = 0.2): number => {
+  return Math.round(kg / packetWeight) // Default 200g packets, but can handle 500g for Fulvadi
 }
 
-export const convertPacketsToKg = (packets: number): number => {
-  return packets * 0.2 // 1 packet (200g) = 0.2kg
+export const convertPacketsToKg = (packets: number, packetWeight = 0.2): number => {
+  return packets * packetWeight // Default 200g packets, but can handle 500g for Fulvadi
 }

@@ -5,7 +5,7 @@ import { NewOrderDialog } from "@/components/new-order-dialog"
 import { StatsCard } from "@/components/stats-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { calculateOrderProfit, type Order, supabase } from "@/lib/supabase"
+import { calculateOrderProfit, type Order, supabase, KHAKHRA_TYPES, calculateDynamicProfit } from "@/lib/supabase"
 import { CheckCircle, Clock, Plus, ShoppingCart, TrendingUp, IndianRupee, Package, ShoppingBag } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -19,7 +19,9 @@ export default function Dashboard() {
     totalEarnings: 0,
     totalKhakhraProfit: 0,
     totalPatraProfit: 0,
+    totalBhakarwadiProfit: 0,
     totalKhakhraSold: 0,
+    totalBhakarwadiSold: 0,
     totalPatraSold: 0,
   })
 
@@ -45,14 +47,54 @@ export default function Dashboard() {
 
       let totalKhakhraProfit = 0
       let totalPatraProfit = 0
+      let totalBhakarwadiProfit = 0
       let totalKhakhraSold = 0
+      let totalBhakarwadiSold = 0
       let totalPatraSold = 0
 
       data?.forEach((order) => {
         const { khakhraProfit, patraProfit } = calculateOrderProfit(order)
-        totalKhakhraProfit += khakhraProfit
+
+        // Separate Bhakarwadi from regular Khakhra
+        let regularKhakhraProfit = 0
+        let bhakarwadiProfit = 0
+        let regularKhakhraSold = 0
+        let bhakarwadiSoldKg = 0
+
+        if (order.khakhra_items) {
+          order.khakhra_items.forEach((item) => {
+            const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
+
+            if (khakhraType?.category === "bhakarwadi") {
+              // This is Bhakarwadi
+              if (item.is_packet_item && item.packet_quantity && item.price_per_packet) {
+                const packetProfit = calculateDynamicProfit(khakhraType, item.price_per_packet, true)
+                bhakarwadiProfit += item.packet_quantity * packetProfit
+                bhakarwadiSoldKg += item.quantity_kg
+              } else {
+                const kgProfit = calculateDynamicProfit(khakhraType, item.price_per_kg, false)
+                bhakarwadiProfit += item.quantity_kg * kgProfit
+                bhakarwadiSoldKg += item.quantity_kg
+              }
+            } else {
+              // This is regular Khakhra
+              if (item.is_packet_item && item.packet_quantity && item.price_per_packet) {
+                const packetProfit = calculateDynamicProfit(khakhraType, item.price_per_packet, true)
+                regularKhakhraProfit += item.packet_quantity * packetProfit
+              } else {
+                const kgProfit = calculateDynamicProfit(khakhraType, item.price_per_kg, false)
+                regularKhakhraProfit += item.quantity_kg * kgProfit
+              }
+              regularKhakhraSold += item.quantity_kg
+            }
+          })
+        }
+
+        totalKhakhraProfit += regularKhakhraProfit
+        totalBhakarwadiProfit += bhakarwadiProfit
         totalPatraProfit += patraProfit
-        totalKhakhraSold += order.total_khakhra_kg || 0
+        totalKhakhraSold += regularKhakhraSold
+        totalBhakarwadiSold += bhakarwadiSoldKg
         totalPatraSold += order.patra_packets || 0
       })
 
@@ -63,7 +105,9 @@ export default function Dashboard() {
         totalEarnings,
         totalKhakhraProfit: Math.round(totalKhakhraProfit),
         totalPatraProfit: Math.round(totalPatraProfit),
-        totalKhakhraSold: Math.round(totalKhakhraSold * 10) / 10, // Round to 1 decimal place
+        totalBhakarwadiProfit: Math.round(totalBhakarwadiProfit),
+        totalKhakhraSold: Math.round(totalKhakhraSold * 10) / 10,
+        totalBhakarwadiSold: Math.round(totalBhakarwadiSold * 10) / 10,
         totalPatraSold,
       })
     } catch (error) {
@@ -148,9 +192,10 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
-              ₹{(stats.totalKhakhraProfit + stats.totalPatraProfit).toLocaleString()} Total Profit
+              ₹{(stats.totalKhakhraProfit + stats.totalPatraProfit + stats.totalBhakarwadiProfit).toLocaleString()}{" "}
+              Total Profit
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1">
                 <p className="text-sm text-green-700 dark:text-green-300">Khakhra Profit</p>
                 <div className="text-xl font-bold text-green-600 dark:text-green-400">
@@ -159,6 +204,16 @@ export default function Dashboard() {
                 <p className="text-xs text-green-600/70 dark:text-green-400/70">
                   <Package className="inline-block h-3 w-3 mr-1" />
                   {stats.totalKhakhraSold} kg sold
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-green-700 dark:text-green-300">Bhakarwadi Profit</p>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  ₹{stats.totalBhakarwadiProfit.toLocaleString()}
+                </div>
+                <p className="text-xs text-green-600/70 dark:text-green-400/70">
+                  <ShoppingBag className="inline-block h-3 w-3 mr-1" />
+                  {stats.totalBhakarwadiSold} kg sold
                 </p>
               </div>
               <div className="space-y-1">
@@ -244,7 +299,11 @@ export default function Dashboard() {
                   <span className="text-xs sm:text-sm text-muted-foreground">Profit Margin</span>
                   <span className="font-medium text-sm text-green-600 dark:text-green-400">
                     {stats.totalEarnings > 0
-                      ? Math.round(((stats.totalKhakhraProfit + stats.totalPatraProfit) / stats.totalEarnings) * 100)
+                      ? Math.round(
+                          ((stats.totalKhakhraProfit + stats.totalPatraProfit + stats.totalBhakarwadiProfit) /
+                            stats.totalEarnings) *
+                            100,
+                        )
                       : 0}
                     %
                   </span>

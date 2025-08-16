@@ -6,7 +6,7 @@ import { getKhakhraTypesByCategory, PATRA_PRICE_MIN, PATRA_PRICE_MAX } from "@/l
 import { Package, IndianRupee, ShoppingBag, TrendingUp } from "lucide-react"
 
 export default function ProductsPage() {
-  const { regular, premium, bhakri, farali, bhakarwadi } = getKhakhraTypesByCategory()
+  const { regular, premium, bhakri, farali, bhakarwadi, fulvadi } = getKhakhraTypesByCategory()
 
   return (
     <div className="h-full overflow-auto">
@@ -15,7 +15,7 @@ export default function ProductsPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Products & Pricing</h2>
           <p className="text-muted-foreground">
-            Flexible pricing for all Khakhra varieties, Bhakarwadi, and Patra options
+            Flexible pricing for all Khakhra varieties, Bhakarwadi, Fulvadi, and Patra options
           </p>
         </div>
 
@@ -132,7 +132,7 @@ export default function ProductsPage() {
             </CardContent>
           </Card>
 
-          {/* NEW: Bhakarwadi Options */}
+          {/* Bhakarwadi Options */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -174,6 +174,51 @@ export default function ProductsPage() {
                         <span className="text-muted-foreground">Profit/packet:</span>
                         <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
                           ₹33
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* NEW: Fulvadi Options */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5" />
+                Fulvadi
+              </CardTitle>
+              <div className="flex items-center gap-1 text-lg font-semibold text-red-600">
+                <IndianRupee className="h-4 w-4" />
+                <span>₹90 per packet (500g)</span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {fulvadi.map((type) => (
+                  <div key={type.name} className="p-2 border rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">{type.name}</span>
+                    </div>
+                    <div className="flex flex-col gap-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Per packet (500g):</span>
+                        <Badge variant="outline" className="bg-red-50 text-red-700 text-xs">
+                          ₹90 (MRP)
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Our cost:</span>
+                        <Badge variant="outline" className="bg-gray-50 text-gray-700 text-xs">
+                          ₹80
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Profit/packet:</span>
+                        <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
+                          ₹10
                         </Badge>
                       </div>
                     </div>
@@ -302,6 +347,15 @@ export default function ProductsPage() {
                 </ul>
               </div>
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
+                <h4 className="font-semibold mb-2">Fulvadi</h4>
+                <ul className="space-y-1 text-muted-foreground">
+                  <li>• Fixed: ₹90/packet (500g MRP)</li>
+                  <li>• Our cost: ₹80/packet</li>
+                  <li>• Fixed profit: ₹10/packet</li>
+                  <li>• Sold by packet only</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
                 <h4 className="font-semibold mb-2">Farali Varieties</h4>
                 <ul className="space-y-1 text-muted-foreground">
                   <li>• Base: ₹45/packet (Regular/Masala)</li>
@@ -359,6 +413,8 @@ export default function ProductsPage() {
                 "Chittal",
                 "Monpar",
                 "Barwala",
+                "Lilya",
+                "Mota Devaliya",
               ].map((city) => (
                 <Badge key={city} variant="secondary" className="justify-center">
                   {city}

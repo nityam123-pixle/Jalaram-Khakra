@@ -6,7 +6,17 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { calculateOrderProfit, CITIES, type Order, supabase } from "@/lib/supabase"
-import { Search, Users, ShoppingCart, TrendingUp, MapPin, Package, IndianRupee, ShoppingBag } from "lucide-react"
+import {
+  Search,
+  Users,
+  ShoppingCart,
+  TrendingUp,
+  MapPin,
+  Package,
+  IndianRupee,
+  ShoppingBag,
+  Calendar,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -17,10 +27,32 @@ interface CustomerSummary {
   totalAmount: number
   totalKhakhraProfit: number
   totalPatraProfit: number
+  totalFulvadiProfit: number
   totalKhakhraKg: number
   totalPatraPackets: number
+  totalFulvadiPackets: number
   orders: Order[]
   lastOrderDate: string
+}
+
+interface MonthlySummary {
+  month: string
+  year: number
+  totalOrders: number
+  totalRevenue: number
+  totalProfit: number
+  totalKhakhraSold: number
+  totalPatraSold: number
+  totalBhakarwadiSold: number
+  totalFulvadiSold: number
+  khakhraRevenue: number
+  patraRevenue: number
+  fulvadiRevenue: number
+  khakhraProfit: number
+  patraProfit: number
+  fulvadiProfit: number
+  bhakarwadiRevenue: number
+  bhakarwadiProfit: number
 }
 
 export default function SummaryPage() {
@@ -30,6 +62,7 @@ export default function SummaryPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [cityFilter, setCityFilter] = useState("all")
   const [sortBy, setSortBy] = useState("orders")
+  const [activeTab, setActiveTab] = useState("customers")
 
   const fetchOrders = async () => {
     try {
@@ -65,7 +98,7 @@ export default function SummaryPage() {
 
     orders.forEach((order) => {
       const key = `${order.shop_name}-${order.city}`
-      const { khakhraProfit, patraProfit } = calculateOrderProfit(order)
+      const { khakhraProfit, patraProfit, fulvadiProfit } = calculateOrderProfit(order)
 
       if (!customerMap.has(key)) {
         customerMap.set(key, {
@@ -75,8 +108,10 @@ export default function SummaryPage() {
           totalAmount: 0,
           totalKhakhraProfit: 0,
           totalPatraProfit: 0,
+          totalFulvadiProfit: 0,
           totalKhakhraKg: 0,
           totalPatraPackets: 0,
+          totalFulvadiPackets: 0,
           orders: [],
           lastOrderDate: order.created_at,
         })
@@ -87,8 +122,10 @@ export default function SummaryPage() {
       customer.totalAmount += order.total_amount || 0
       customer.totalKhakhraProfit += khakhraProfit
       customer.totalPatraProfit += patraProfit
+      customer.totalFulvadiProfit += fulvadiProfit
       customer.totalKhakhraKg += order.total_khakhra_kg || 0
       customer.totalPatraPackets += order.patra_packets || 0
+      customer.totalFulvadiPackets += order.fulvadi_packets || 0
       customer.orders.push(order)
 
       // Update last order date if this order is more recent
@@ -100,7 +137,106 @@ export default function SummaryPage() {
     return Array.from(customerMap.values())
   }
 
+  // Calculate monthly summaries - only for months with actual sales
+  const calculateMonthlySummaries = (): MonthlySummary[] => {
+    const monthlyMap = new Map<string, MonthlySummary>()
+
+    orders.forEach((order) => {
+      const date = new Date(order.created_at)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+      const monthName = date.toLocaleDateString("en-US", { month: "long" })
+      const year = date.getFullYear()
+
+      if (!monthlyMap.has(monthKey)) {
+        monthlyMap.set(monthKey, {
+          month: monthName,
+          year,
+          totalOrders: 0,
+          totalRevenue: 0,
+          totalProfit: 0,
+          totalKhakhraSold: 0,
+          totalPatraSold: 0,
+          totalBhakarwadiSold: 0,
+          totalFulvadiSold: 0,
+          khakhraRevenue: 0,
+          patraRevenue: 0,
+          fulvadiRevenue: 0,
+          khakhraProfit: 0,
+          patraProfit: 0,
+          fulvadiProfit: 0,
+          bhakarwadiRevenue: 0,
+          bhakarwadiProfit: 0,
+        })
+      }
+
+      const monthly = monthlyMap.get(monthKey)!
+      const { khakhraProfit, patraProfit, fulvadiProfit } = calculateOrderProfit(order)
+
+      monthly.totalOrders += 1
+      monthly.totalRevenue += order.total_amount || 0
+      monthly.totalProfit += khakhraProfit + patraProfit + fulvadiProfit
+      monthly.totalKhakhraSold += order.total_khakhra_kg || 0
+      monthly.totalPatraSold += order.patra_packets || 0
+      monthly.totalFulvadiSold += order.fulvadi_packets || 0
+
+      // Calculate revenue breakdown
+      let khakhraRevenue = 0
+      let bhakarwadiRevenue = 0
+      let bhakarwadiKg = 0
+
+      if (order.khakhra_items) {
+        order.khakhra_items.forEach((item) => {
+          if (item.khakhra_type.toLowerCase().includes("bhakarwadi")) {
+            if (item.is_packet_item) {
+              bhakarwadiRevenue += (item.packet_quantity || 0) * (item.price_per_packet || 0)
+              bhakarwadiKg += (item.packet_quantity || 0) * 0.2
+            } else {
+              bhakarwadiRevenue += item.quantity_kg * item.price_per_kg
+              bhakarwadiKg += item.quantity_kg
+            }
+          } else if (!item.khakhra_type.toLowerCase().includes("fulvadi")) {
+            if (item.is_packet_item) {
+              khakhraRevenue += (item.packet_quantity || 0) * (item.price_per_packet || 0)
+            } else {
+              khakhraRevenue += item.quantity_kg * item.price_per_kg
+            }
+          }
+        })
+      }
+
+      monthly.totalBhakarwadiSold += bhakarwadiKg
+      monthly.khakhraRevenue += khakhraRevenue
+      monthly.bhakarwadiRevenue += bhakarwadiRevenue
+      monthly.patraRevenue += order.wants_patra ? order.patra_packets * order.patra_price_per_packet : 0
+      monthly.fulvadiRevenue += order.wants_fulvadi ? order.fulvadi_packets * order.fulvadi_price_per_packet : 0
+
+      // Calculate profit breakdown
+      monthly.khakhraProfit += khakhraProfit
+      monthly.patraProfit += patraProfit
+      monthly.fulvadiProfit += fulvadiProfit
+
+      // Calculate Bhakarwadi profit separately
+      if (order.khakhra_items) {
+        order.khakhra_items.forEach((item) => {
+          if (item.khakhra_type.toLowerCase().includes("bhakarwadi")) {
+            if (item.is_packet_item) {
+              monthly.bhakarwadiProfit += (item.packet_quantity || 0) * 33 // Fixed profit per packet
+            } else {
+              monthly.bhakarwadiProfit += item.quantity_kg * 25 // Base profit per kg
+            }
+          }
+        })
+      }
+    })
+
+    return Array.from(monthlyMap.values()).sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year
+      return b.month.localeCompare(a.month)
+    })
+  }
+
   const customerSummaries = calculateCustomerSummaries()
+  const monthlySummaries = calculateMonthlySummaries()
 
   // Filter and sort customers
   const filteredCustomers = customerSummaries
@@ -118,7 +254,12 @@ export default function SummaryPage() {
         case "amount":
           return b.totalAmount - a.totalAmount
         case "profit":
-          return b.totalKhakhraProfit + b.totalPatraProfit - (a.totalKhakhraProfit + a.totalPatraProfit)
+          return (
+            b.totalKhakhraProfit +
+            b.totalPatraProfit +
+            b.totalFulvadiProfit -
+            (a.totalKhakhraProfit + a.totalPatraProfit + a.totalFulvadiProfit)
+          )
         case "recent":
           return new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
         default:
@@ -129,10 +270,12 @@ export default function SummaryPage() {
   // Calculate overall stats
   let overallKhakhraProfit = 0
   let overallPatraProfit = 0
+  let overallFulvadiProfit = 0
   orders.forEach((order) => {
-    const { khakhraProfit, patraProfit } = calculateOrderProfit(order)
+    const { khakhraProfit, patraProfit, fulvadiProfit } = calculateOrderProfit(order)
     overallKhakhraProfit += khakhraProfit
     overallPatraProfit += patraProfit
+    overallFulvadiProfit += fulvadiProfit
   })
 
   const overallStats = {
@@ -141,8 +284,10 @@ export default function SummaryPage() {
     totalRevenue: orders.reduce((sum, order) => sum + (order.total_amount || 0), 0),
     totalKhakhraProfit: Math.round(overallKhakhraProfit),
     totalPatraProfit: Math.round(overallPatraProfit),
+    totalFulvadiProfit: Math.round(overallFulvadiProfit),
     totalKhakhraSold: Math.round(orders.reduce((sum, order) => sum + order.total_khakhra_kg, 0) * 10) / 10,
     totalPatraSold: orders.reduce((sum, order) => sum + order.patra_packets, 0),
+    totalFulvadiSold: orders.reduce((sum, order) => sum + order.fulvadi_packets, 0),
     avgOrdersPerCustomer:
       customerSummaries.length > 0 ? Math.round((orders.length / customerSummaries.length) * 10) / 10 : 0,
     topCustomer: filteredCustomers[0] || null,
@@ -173,7 +318,9 @@ export default function SummaryPage() {
         {/* Header */}
         <div>
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Business Summary</h2>
-          <p className="text-muted-foreground text-sm sm:text-base">Complete overview of customers and their orders</p>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Complete overview of customers and monthly performance
+          </p>
         </div>
 
         {/* Overall Stats */}
@@ -218,258 +365,315 @@ export default function SummaryPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
-                Avg Orders/Customer
+                Total Profit
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-2xl font-bold">{overallStats.avgOrdersPerCustomer}</div>
+              <div className="text-2xl font-bold">
+                ₹
+                {(
+                  overallStats.totalKhakhraProfit +
+                  overallStats.totalPatraProfit +
+                  overallStats.totalFulvadiProfit
+                ).toLocaleString()}
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Overall Profit & Sales Card */}
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300 text-base sm:text-lg">
-              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
-              Overall Profit & Sales
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
-              ₹{(overallStats.totalKhakhraProfit + overallStats.totalPatraProfit).toLocaleString()} Total Profit
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm text-green-700 dark:text-green-300">Khakhra Profit</p>
-                <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                  ₹{overallStats.totalKhakhraProfit.toLocaleString()}
-                </div>
-                <p className="text-xs text-green-600/70 dark:text-green-400/70">
-                  <Package className="inline-block h-3 w-3 mr-1" />
-                  {overallStats.totalKhakhraSold} kg sold
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-green-700 dark:text-green-300">Patra Profit</p>
-                <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                  ₹{overallStats.totalPatraProfit.toLocaleString()}
-                </div>
-                <p className="text-xs text-green-600/70 dark:text-green-400/70">
-                  <ShoppingBag className="inline-block h-3 w-3 mr-1" />
-                  {overallStats.totalPatraSold} packets sold
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Tabs for Customer and Monthly Views */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="customers">Customer Summary</TabsTrigger>
+            <TabsTrigger value="monthly">Monthly Summary</TabsTrigger>
+          </TabsList>
 
-        {/* Top Customer Highlight */}
-        {overallStats.topCustomer && (
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                <Users className="h-5 w-5" />
-                Top Customer
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <h3 className="font-semibold text-lg">{overallStats.topCustomer.shopName}</h3>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    {overallStats.topCustomer.city}
+          {/* Customer Summary Tab */}
+          <TabsContent value="customers" className="space-y-6">
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search customers by shop name or city..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={cityFilter} onValueChange={setCityFilter}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Filter by city" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Cities</SelectItem>
+                  {CITIES.map((city) => (
+                    <SelectItem key={city} value={city}>
+                      {city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="orders">Most Orders</SelectItem>
+                  <SelectItem value="amount">Highest Revenue</SelectItem>
+                  <SelectItem value="profit">Most Profitable</SelectItem>
+                  <SelectItem value="recent">Most Recent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Customer List */}
+            <div className="space-y-4">
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map((customer, index) => (
+                  <Card key={`${customer.shopName}-${customer.city}`} className="hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <span className="truncate">{customer.shopName}</span>
+                            {index === 0 && sortBy === "orders" && (
+                              <Badge variant="secondary" className="bg-gold-100 text-gold-800">
+                                Top Customer
+                              </Badge>
+                            )}
+                          </CardTitle>
+                          <CardDescription className="flex items-center gap-1 mt-1">
+                            <MapPin className="h-3 w-3" />
+                            {customer.city}
+                          </CardDescription>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-medium">{customer.totalOrders} Orders</div>
+                          <div className="text-xs text-muted-foreground">
+                            Last: {formatDate(customer.lastOrderDate)}
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Summary Stats */}
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          <IndianRupee className="h-4 w-4 text-green-600" />
+                          <div>
+                            <p className="text-muted-foreground">Revenue</p>
+                            <p className="font-semibold">₹{customer.totalAmount.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-blue-600" />
+                          <div>
+                            <p className="text-muted-foreground">Khakhra Profit</p>
+                            <p className="font-semibold">₹{Math.round(customer.totalKhakhraProfit).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-purple-600" />
+                          <div>
+                            <p className="text-muted-foreground">Patra Profit</p>
+                            <p className="font-semibold">₹{Math.round(customer.totalPatraProfit).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-red-600" />
+                          <div>
+                            <p className="text-muted-foreground">Fulvadi Profit</p>
+                            <p className="font-semibold">₹{Math.round(customer.totalFulvadiProfit).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Package className="h-4 w-4 text-orange-600" />
+                          <div>
+                            <p className="text-muted-foreground">Khakhra Sold</p>
+                            <p className="font-semibold">{customer.totalKhakhraKg} kg</p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold">No customers found</h3>
+                  <p className="text-muted-foreground">
+                    {searchTerm || cityFilter !== "all"
+                      ? "Try adjusting your search or filters"
+                      : "No orders have been created yet"}
                   </p>
                 </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Orders</p>
-                    <p className="font-semibold">{overallStats.topCustomer.totalOrders}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Revenue</p>
-                    <p className="font-semibold">₹{overallStats.topCustomer.totalAmount.toLocaleString()}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search customers by shop name or city..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Select value={cityFilter} onValueChange={setCityFilter}>
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Filter by city" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Cities</SelectItem>
-              {CITIES.map((city) => (
-                <SelectItem key={city} value={city}>
-                  {city}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="orders">Most Orders</SelectItem>
-              <SelectItem value="amount">Highest Revenue</SelectItem>
-              <SelectItem value="profit">Most Profitable</SelectItem>
-              <SelectItem value="recent">Most Recent</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Customer List */}
-        <div className="space-y-4">
-          {filteredCustomers.length > 0 ? (
-            filteredCustomers.map((customer, index) => (
-              <Card key={`${customer.shopName}-${customer.city}`} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <span className="truncate">{customer.shopName}</span>
-                        {index === 0 && sortBy === "orders" && (
-                          <Badge variant="secondary" className="bg-gold-100 text-gold-800">
-                            Top Customer
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <CardDescription className="flex items-center gap-1 mt-1">
-                        <MapPin className="h-3 w-3" />
-                        {customer.city}
-                      </CardDescription>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-sm font-medium">{customer.totalOrders} Orders</div>
-                      <div className="text-xs text-muted-foreground">Last: {formatDate(customer.lastOrderDate)}</div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Summary Stats */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <IndianRupee className="h-4 w-4 text-green-600" />
-                      <div>
-                        <p className="text-muted-foreground">Revenue</p>
-                        <p className="font-semibold">₹{customer.totalAmount.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-blue-600" />
-                      <div>
-                        <p className="text-muted-foreground">Khakhra Profit</p>
-                        <p className="font-semibold">₹{Math.round(customer.totalKhakhraProfit).toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-purple-600" />
-                      <div>
-                        <p className="text-muted-foreground">Patra Profit</p>
-                        <p className="font-semibold">₹{Math.round(customer.totalPatraProfit).toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4 text-orange-600" />
-                      <div>
-                        <p className="text-muted-foreground">Khakhra Sold</p>
-                        <p className="font-semibold">{customer.totalKhakhraKg} kg</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ShoppingCart className="h-4 w-4 text-red-600" />
-                      <div>
-                        <p className="text-muted-foreground">Patra Sold</p>
-                        <p className="font-semibold">{customer.totalPatraPackets} packets</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Order Details */}
-                  <Tabs defaultValue="recent" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="recent">Recent Orders</TabsTrigger>
-                      <TabsTrigger value="products">Products Ordered</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="recent" className="mt-4">
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {customer.orders.slice(0, 5).map((order) => (
-                          <div key={order.id} className="flex items-center justify-between p-2 border rounded text-sm">
-                            <div>
-                              <span className="font-medium">₹{order.total_amount}</span>
-                              <span className="text-muted-foreground ml-2">{formatDate(order.created_at)}</span>
-                            </div>
-                            <Badge variant={order.status === "completed" ? "default" : "secondary"}>
-                              {order.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="products" className="mt-4">
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {/* Khakhra Items */}
-                        {customer.orders
-                          .flatMap((order) => order.khakhra_items || [])
-                          .reduce((acc, item) => {
-                            const existing = acc.find((i) => i.khakhra_type === item.khakhra_type)
-                            if (existing) {
-                              existing.quantity_kg += item.quantity_kg
-                            } else {
-                              acc.push({ ...item })
-                            }
-                            return acc
-                          }, [] as any[])
-                          .map((item, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-2 border rounded text-sm">
-                              <span>{item.khakhra_type}</span>
-                              <Badge variant="outline">{item.quantity_kg} kg</Badge>
-                            </div>
-                          ))}
-
-                        {/* Patra */}
-                        {customer.totalPatraPackets > 0 && (
-                          <div className="flex items-center justify-between p-2 border rounded text-sm">
-                            <span>Patra</span>
-                            <Badge variant="outline">{customer.totalPatraPackets} packets</Badge>
-                          </div>
-                        )}
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold">No customers found</h3>
-              <p className="text-muted-foreground">
-                {searchTerm || cityFilter !== "all"
-                  ? "Try adjusting your search or filters"
-                  : "No orders have been created yet"}
-              </p>
+              )}
             </div>
-          )}
-        </div>
+          </TabsContent>
+
+          {/* Monthly Summary Tab */}
+          <TabsContent value="monthly" className="space-y-6">
+            <div className="space-y-4">
+              {monthlySummaries.length > 0 ? (
+                monthlySummaries.map((monthly, index) => (
+                  <Card key={`${monthly.year}-${monthly.month}`} className="hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <Calendar className="h-5 w-5" />
+                            <span>
+                              {monthly.month} {monthly.year}
+                            </span>
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            {monthly.totalOrders} orders • ₹{monthly.totalRevenue.toLocaleString()} revenue
+                          </CardDescription>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-lg font-bold text-green-600">
+                            ₹{Math.round(monthly.totalProfit).toLocaleString()}
+                          </div>
+                          <div className="text-xs text-muted-foreground">Total Profit</div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Revenue Breakdown */}
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                          <IndianRupee className="h-4 w-4" />
+                          Revenue Breakdown
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-blue-600" />
+                            <div>
+                              <p className="text-muted-foreground">Khakhra</p>
+                              <p className="font-semibold">₹{monthly.khakhraRevenue.toLocaleString()}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-purple-600" />
+                            <div>
+                              <p className="text-muted-foreground">Patra</p>
+                              <p className="font-semibold">₹{monthly.patraRevenue.toLocaleString()}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-amber-600" />
+                            <div>
+                              <p className="text-muted-foreground">Bhakarwadi</p>
+                              <p className="font-semibold">₹{monthly.bhakarwadiRevenue.toLocaleString()}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-red-600" />
+                            <div>
+                              <p className="text-muted-foreground">Fulvadi</p>
+                              <p className="font-semibold">₹{monthly.fulvadiRevenue.toLocaleString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Profit Breakdown */}
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4" />
+                          Profit Breakdown
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-blue-600" />
+                            <div>
+                              <p className="text-muted-foreground">Khakhra</p>
+                              <p className="font-semibold text-green-600">
+                                ₹{Math.round(monthly.khakhraProfit).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-purple-600" />
+                            <div>
+                              <p className="text-muted-foreground">Patra</p>
+                              <p className="font-semibold text-green-600">
+                                ₹{Math.round(monthly.patraProfit).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-amber-600" />
+                            <div>
+                              <p className="text-muted-foreground">Bhakarwadi</p>
+                              <p className="font-semibold text-green-600">
+                                ₹{Math.round(monthly.bhakarwadiProfit).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-red-600" />
+                            <div>
+                              <p className="text-muted-foreground">Fulvadi</p>
+                              <p className="font-semibold text-green-600">
+                                ₹{Math.round(monthly.fulvadiProfit).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quantity Sold */}
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                          <ShoppingCart className="h-4 w-4" />
+                          Quantity Sold
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-green-600" />
+                            <div>
+                              <p className="text-muted-foreground">Khakhra</p>
+                              <p className="font-semibold">{Math.round(monthly.totalKhakhraSold * 10) / 10} kg</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-purple-600" />
+                            <div>
+                              <p className="text-muted-foreground">Patra</p>
+                              <p className="font-semibold">{monthly.totalPatraSold} packets</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-amber-600" />
+                            <div>
+                              <p className="text-muted-foreground">Bhakarwadi</p>
+                              <p className="font-semibold">{Math.round(monthly.totalBhakarwadiSold * 10) / 10} kg</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShoppingBag className="h-4 w-4 text-red-600" />
+                            <div>
+                              <p className="text-muted-foreground">Fulvadi</p>
+                              <p className="font-semibold">{monthly.totalFulvadiSold} packets</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold">No monthly data available</h3>
+                  <p className="text-muted-foreground">Create some orders to see monthly summaries</p>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )
