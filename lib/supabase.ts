@@ -355,6 +355,10 @@ export const CITIES = [
   "Barwala",
   "Lilya",
   "Mota Devaliya",
+  "Gariyadhar",
+  "Dhasa Gam",
+  "Dhasa Junction",
+  "Jetpur"
 ]
 
 // Patra pricing range
