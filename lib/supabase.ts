@@ -443,11 +443,11 @@ export const generatePriceOptions = (min: number, max: number) => {
 // Add dynamic patra profit calculation function
 export const calculatePatraProfit = (pricePerPacket: number): number => {
   // Assuming cost of Patra is 64. Profit = price - cost.
-  // At 80, profit = 80 - 64 = 16 (new base)
-  // At 85, profit = 85 - 64 = 21
+  // At 80, profit = 80 - 67.75 = 12.25 (new base)
+  // At 85, profit = 85 - 67.75 = 17.25
   // Profit increases by 1 for every 1 rupee increase in price.
   const basePatraPrice = 80 // Updated base price for profit calculation
-  const basePatraProfit = 16 // Updated base profit for 80
+  const basePatraProfit = 12.25 // Updated base profit for 80
   return basePatraProfit + (pricePerPacket - basePatraPrice)
 }
 
