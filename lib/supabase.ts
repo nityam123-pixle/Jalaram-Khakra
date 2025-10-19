@@ -261,7 +261,7 @@ export const KHAKHRA_TYPES = [
     sellBy: "both" as const,
     basePacketPrice: 60, // MRP per 200g packet
     maxPacketPrice: 60, // Fixed MRP
-    basePacketProfit: 25, // At ₹60 per 200g: ₹60 - ₹27 (135/5) = ₹33, but let's use 25 as base
+    basePacketProfit: 25, // At ₹60 per 200g: ₹60 - ₹38 = ₹33, but let's use 25 as base
     basePacketCost: 27, // ₹135/kg ÷ 5 packets = ₹27 per packet
   },
   {
@@ -358,13 +358,13 @@ export const CITIES = [
   "Gariyadhar",
   "Dhasa Gam",
   "Dhasa Junction",
-  "Jetpur"
+  "Jetpur",
 ]
 
 // Patra pricing range
-export const PATRA_PRICE_MIN = 80 // Updated min price to match DB constraint
-export const PATRA_PRICE_MAX = 85 // Updated max price
-export const PATRA_PRICE = 80 // Default price, still within range
+export const PATRA_PRICE_MIN = 75 // Updated min price
+export const PATRA_PRICE_MAX = 90 // Updated max price
+export const PATRA_PRICE = 75 // Default price
 
 // NEW: Bhakarwadi pricing constants
 export const BHAKARWADI_PRICE_MIN = 160
@@ -442,12 +442,12 @@ export const generatePriceOptions = (min: number, max: number) => {
 
 // Add dynamic patra profit calculation function
 export const calculatePatraProfit = (pricePerPacket: number): number => {
-  // Assuming cost of Patra is 64. Profit = price - cost.
-  // At 80, profit = 80 - 67.75 = 12.25 (new base)
-  // At 85, profit = 85 - 67.75 = 17.25
+  // Assuming cost of Patra is 67.75. Profit = price - cost.
+  // At 75, profit = 75 - 67.75 = 7.25 (new base)
+  // At 90, profit = 90 - 67.75 = 22.25
   // Profit increases by 1 for every 1 rupee increase in price.
-  const basePatraPrice = 80 // Updated base price for profit calculation
-  const basePatraProfit = 12.25 // Updated base profit for 80
+  const basePatraPrice = 75 // Updated base price for profit calculation
+  const basePatraProfit = 7.25 // Updated base profit for 75
   return basePatraProfit + (pricePerPacket - basePatraPrice)
 }
 

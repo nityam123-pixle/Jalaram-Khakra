@@ -48,29 +48,33 @@ export function AppSidebar() {
   const pathname = usePathname()
 
   return (
-    <Sidebar>
-      <SidebarHeader>
-        <div className="flex items-center gap-2 px-4 py-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Package className="h-4 w-4" />
+    <Sidebar className="bg-background border-r border-border">
+      <SidebarHeader className="p-4">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Package className="h-6 w-6" />
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold">Khakhra Orders</span>
-            <span className="text-xs text-muted-foreground">Order Management</span>
+            <span className="text-lg font-semibold">Khakhra Orders</span>
+            <span className="text-sm text-muted-foreground">Order Management</span>
           </div>
         </div>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="p-4">
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="mb-2 text-sm font-semibold">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url}>
-                    <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                <SidebarMenuItem key={item.title} className="mb-2">
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === item.url}
+                    className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <Link href={item.url} className="flex items-center gap-4">
+                      <item.icon className="h-6 w-6 text-muted-foreground" />
+                      <span className="font-medium text-sm">{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

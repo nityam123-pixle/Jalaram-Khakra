@@ -1,72 +1,59 @@
 "use client"
 
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { calculateOrderProfit, CITIES, type Order, supabase } from "@/lib/supabase"
-import {
-  Search,
-  Users,
-  ShoppingCart,
-  TrendingUp,
-  MapPin,
-  Package,
-  IndianRupee,
-  ShoppingBag,
-  Calendar,
-} from "lucide-react"
 import { useEffect, useState } from "react"
-import { useToast } from "@/hooks/use-toast"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { supabase, calculateOrderProfit, type Order } from "@/lib/supabase"
+import { IndianRupee, TrendingUp, Calendar, ShoppingCart, MapPin } from "lucide-react"
+import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from "date-fns"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 
-interface CustomerSummary {
-  shopName: string
-  city: string
-  totalOrders: number
-  totalAmount: number
-  totalKhakhraProfit: number
-  totalPatraProfit: number
-  totalFulvadiProfit: number
-  totalKhakhraKg: number
-  totalPatraPackets: number
-  totalFulvadiPackets: number
-  orders: Order[]
-  lastOrderDate: string
-}
-
-interface MonthlySummary {
-  month: string
-  year: number
+interface SummaryStats {
   totalOrders: number
   totalRevenue: number
   totalProfit: number
-  totalKhakhraSold: number
-  totalPatraSold: number
-  totalBhakarwadiSold: number
-  totalFulvadiSold: number
-  khakhraRevenue: number
-  patraRevenue: number
-  fulvadiRevenue: number
+  totalKhakhraKg: number
+  totalPatraPackets: number
+  totalBhakarwadiKg: number
+  totalFulvadiPackets: number
+  pendingOrders: number
+  completedOrders: number
   khakhraProfit: number
   patraProfit: number
-  fulvadiProfit: number
-  bhakarwadiRevenue: number
   bhakarwadiProfit: number
+  fulvadiProfit: number
+}
+
+interface MonthlyStats extends SummaryStats {
+  month: string
+  year: number
 }
 
 export default function SummaryPage() {
-  const { toast } = useToast()
+  const [stats, setStats] = useState<SummaryStats>({
+    totalOrders: 0,
+    totalRevenue: 0,
+    totalProfit: 0,
+    totalKhakhraKg: 0,
+    totalPatraPackets: 0,
+    totalBhakarwadiKg: 0,
+    totalFulvadiPackets: 0,
+    pendingOrders: 0,
+    completedOrders: 0,
+    khakhraProfit: 0,
+    patraProfit: 0,
+    bhakarwadiProfit: 0,
+    fulvadiProfit: 0,
+  })
+  const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [cityFilter, setCityFilter] = useState("all")
-  const [sortBy, setSortBy] = useState("orders")
-  const [activeTab, setActiveTab] = useState("customers")
 
-  const fetchOrders = async () => {
+  const fetchStats = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: ordersData, error } = await supabase
         .from("orders")
         .select(`
           *,
@@ -75,606 +62,536 @@ export default function SummaryPage() {
         .order("created_at", { ascending: false })
 
       if (error) throw error
-      setOrders(data || [])
-    } catch (error) {
-      console.error("Error fetching orders:", error)
-      toast({
-        title: "Error",
-        description: "Failed to fetch orders",
-        variant: "destructive",
+
+      const ordersWithItems = ordersData as Order[]
+
+      // Calculate overall stats
+      const totalStats = ordersWithItems.reduce(
+        (acc, order) => {
+          const { khakhraProfit, patraProfit, totalProfit } = calculateOrderProfit(order)
+
+          // Calculate Bhakarwadi and Fulvadi specific metrics
+          let bhakarwadiKg = 0
+          let bhakarwadiProfit = 0
+          let fulvadiPackets = 0
+          let fulvadiProfit = 0
+
+          if (order.khakhra_items) {
+            order.khakhra_items.forEach((item) => {
+              const itemType = item.khakhra_type.toLowerCase()
+              if (itemType.includes("bhakarwadi")) {
+                if (item.is_packet_item) {
+                  bhakarwadiKg += (item.packet_quantity || 0) * 0.2
+                  bhakarwadiProfit += (item.packet_quantity || 0) * 33 // Fixed profit per packet
+                } else {
+                  bhakarwadiKg += item.quantity_kg
+                  bhakarwadiProfit += item.quantity_kg * 25 // Base profit per kg
+                }
+              } else if (itemType.includes("fulvadi")) {
+                if (item.is_packet_item) {
+                  fulvadiPackets += item.packet_quantity || 0
+                  fulvadiProfit += (item.packet_quantity || 0) * 10 // Fixed ₹10 profit per packet
+                }
+              }
+            })
+          }
+
+          return {
+            totalOrders: acc.totalOrders + 1,
+            totalRevenue: acc.totalRevenue + order.total_amount,
+            totalProfit: acc.totalProfit + totalProfit,
+            totalKhakhraKg: acc.totalKhakhraKg + order.total_khakhra_kg,
+            totalPatraPackets: acc.totalPatraPackets + order.patra_packets,
+            totalBhakarwadiKg: acc.totalBhakarwadiKg + bhakarwadiKg,
+            totalFulvadiPackets: acc.totalFulvadiPackets + fulvadiPackets,
+            pendingOrders: acc.pendingOrders + (order.status === "pending" ? 1 : 0),
+            completedOrders: acc.completedOrders + (order.status === "completed" ? 1 : 0),
+            khakhraProfit: acc.khakhraProfit + khakhraProfit,
+            patraProfit: acc.patraProfit + patraProfit,
+            bhakarwadiProfit: acc.bhakarwadiProfit + bhakarwadiProfit,
+            fulvadiProfit: acc.fulvadiProfit + fulvadiProfit,
+          }
+        },
+        {
+          totalOrders: 0,
+          totalRevenue: 0,
+          totalProfit: 0,
+          totalKhakhraKg: 0,
+          totalPatraPackets: 0,
+          totalBhakarwadiKg: 0,
+          totalFulvadiPackets: 0,
+          pendingOrders: 0,
+          completedOrders: 0,
+          khakhraProfit: 0,
+          patraProfit: 0,
+          bhakarwadiProfit: 0,
+          fulvadiProfit: 0,
+        },
+      )
+
+      setStats(totalStats)
+      setOrders(ordersWithItems)
+
+      // Calculate monthly stats for the last 12 months
+      const now = new Date()
+      const twelveMonthsAgo = subMonths(now, 11)
+      const months = eachMonthOfInterval({ start: twelveMonthsAgo, end: now })
+
+      const monthlyData = months.map((month) => {
+        const monthStart = startOfMonth(month)
+        const monthEnd = endOfMonth(month)
+
+        const monthOrders = ordersWithItems.filter((order) => {
+          const orderDate = new Date(order.created_at)
+          return orderDate >= monthStart && orderDate <= monthEnd
+        })
+
+        const monthStats = monthOrders.reduce(
+          (acc, order) => {
+            const { khakhraProfit, patraProfit, totalProfit } = calculateOrderProfit(order)
+
+            let bhakarwadiKg = 0
+            let bhakarwadiProfit = 0
+            let fulvadiPackets = 0
+            let fulvadiProfit = 0
+
+            if (order.khakhra_items) {
+              order.khakhra_items.forEach((item) => {
+                const itemType = item.khakhra_type.toLowerCase()
+                if (itemType.includes("bhakarwadi")) {
+                  if (item.is_packet_item) {
+                    bhakarwadiKg += (item.packet_quantity || 0) * 0.2
+                    bhakarwadiProfit += (item.packet_quantity || 0) * 33
+                  } else {
+                    bhakarwadiKg += item.quantity_kg
+                    bhakarwadiProfit += item.quantity_kg * 25
+                  }
+                } else if (itemType.includes("fulvadi")) {
+                  if (item.is_packet_item) {
+                    fulvadiPackets += item.packet_quantity || 0
+                    fulvadiProfit += (item.packet_quantity || 0) * 10
+                  }
+                }
+              })
+            }
+
+            return {
+              totalOrders: acc.totalOrders + 1,
+              totalRevenue: acc.totalRevenue + order.total_amount,
+              totalProfit: acc.totalProfit + totalProfit,
+              totalKhakhraKg: acc.totalKhakhraKg + order.total_khakhra_kg,
+              totalPatraPackets: acc.totalPatraPackets + order.patra_packets,
+              totalBhakarwadiKg: acc.totalBhakarwadiKg + bhakarwadiKg,
+              totalFulvadiPackets: acc.totalFulvadiPackets + fulvadiPackets,
+              pendingOrders: acc.pendingOrders + (order.status === "pending" ? 1 : 0),
+              completedOrders: acc.completedOrders + (order.status === "completed" ? 1 : 0),
+              khakhraProfit: acc.khakhraProfit + khakhraProfit,
+              patraProfit: acc.patraProfit + patraProfit,
+              bhakarwadiProfit: acc.bhakarwadiProfit + bhakarwadiProfit,
+              fulvadiProfit: acc.fulvadiProfit + fulvadiProfit,
+            }
+          },
+          {
+            totalOrders: 0,
+            totalRevenue: 0,
+            totalProfit: 0,
+            totalKhakhraKg: 0,
+            totalPatraPackets: 0,
+            totalBhakarwadiKg: 0,
+            totalFulvadiPackets: 0,
+            pendingOrders: 0,
+            completedOrders: 0,
+            khakhraProfit: 0,
+            patraProfit: 0,
+            bhakarwadiProfit: 0,
+            fulvadiProfit: 0,
+            month: format(month, "MMMM"),
+            year: month.getFullYear(),
+          },
+        )
+
+        return {
+          ...monthStats,
+          month: format(month, "MMMM"),
+          year: month.getFullYear(),
+        }
       })
+
+      setMonthlyStats(monthlyData)
+    } catch (error) {
+      console.error("Error fetching stats:", error)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchOrders()
+    fetchStats()
   }, [])
-
-  // Calculate customer summaries
-  const calculateCustomerSummaries = (): CustomerSummary[] => {
-    const customerMap = new Map<string, CustomerSummary>()
-
-    orders.forEach((order) => {
-      const key = `${order.shop_name}-${order.city}`
-      const { khakhraProfit, patraProfit, fulvadiProfit } = calculateOrderProfit(order)
-
-      if (!customerMap.has(key)) {
-        customerMap.set(key, {
-          shopName: order.shop_name,
-          city: order.city,
-          totalOrders: 0,
-          totalAmount: 0,
-          totalKhakhraProfit: 0,
-          totalPatraProfit: 0,
-          totalFulvadiProfit: 0,
-          totalKhakhraKg: 0,
-          totalPatraPackets: 0,
-          totalFulvadiPackets: 0,
-          orders: [],
-          lastOrderDate: order.created_at,
-        })
-      }
-
-      const customer = customerMap.get(key)!
-      customer.totalOrders += 1
-      customer.totalAmount += order.total_amount || 0
-      customer.totalKhakhraProfit += khakhraProfit
-      customer.totalPatraProfit += patraProfit
-      customer.totalFulvadiProfit += fulvadiProfit
-      customer.totalKhakhraKg += order.total_khakhra_kg || 0
-      customer.totalPatraPackets += order.patra_packets || 0
-      customer.totalFulvadiPackets += order.fulvadi_packets || 0
-      customer.orders.push(order)
-
-      // Update last order date if this order is more recent
-      if (new Date(order.created_at) > new Date(customer.lastOrderDate)) {
-        customer.lastOrderDate = order.created_at
-      }
-    })
-
-    return Array.from(customerMap.values())
-  }
-
-  // Calculate monthly summaries - only for months with actual sales
-  const calculateMonthlySummaries = (): MonthlySummary[] => {
-    const monthlyMap = new Map<string, MonthlySummary>()
-
-    orders.forEach((order) => {
-      const date = new Date(order.created_at)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-      const monthName = date.toLocaleDateString("en-US", { month: "long" })
-      const year = date.getFullYear()
-
-      if (!monthlyMap.has(monthKey)) {
-        monthlyMap.set(monthKey, {
-          month: monthName,
-          year,
-          totalOrders: 0,
-          totalRevenue: 0,
-          totalProfit: 0,
-          totalKhakhraSold: 0,
-          totalPatraSold: 0,
-          totalBhakarwadiSold: 0,
-          totalFulvadiSold: 0,
-          khakhraRevenue: 0,
-          patraRevenue: 0,
-          fulvadiRevenue: 0,
-          khakhraProfit: 0,
-          patraProfit: 0,
-          fulvadiProfit: 0,
-          bhakarwadiRevenue: 0,
-          bhakarwadiProfit: 0,
-        })
-      }
-
-      const monthly = monthlyMap.get(monthKey)!
-      const { khakhraProfit, patraProfit, fulvadiProfit } = calculateOrderProfit(order)
-
-      monthly.totalOrders += 1
-      monthly.totalRevenue += order.total_amount || 0
-      monthly.totalProfit += khakhraProfit + patraProfit + fulvadiProfit
-      monthly.totalKhakhraSold += order.total_khakhra_kg || 0
-      monthly.totalPatraSold += order.patra_packets || 0
-      monthly.totalFulvadiSold += order.fulvadi_packets || 0
-
-      // Calculate revenue breakdown
-      let khakhraRevenue = 0
-      let bhakarwadiRevenue = 0
-      let bhakarwadiKg = 0
-
-      if (order.khakhra_items) {
-        order.khakhra_items.forEach((item) => {
-          if (item.khakhra_type.toLowerCase().includes("bhakarwadi")) {
-            if (item.is_packet_item) {
-              bhakarwadiRevenue += (item.packet_quantity || 0) * (item.price_per_packet || 0)
-              bhakarwadiKg += (item.packet_quantity || 0) * 0.2
-            } else {
-              bhakarwadiRevenue += item.quantity_kg * item.price_per_kg
-              bhakarwadiKg += item.quantity_kg
-            }
-          } else if (!item.khakhra_type.toLowerCase().includes("fulvadi")) {
-            if (item.is_packet_item) {
-              khakhraRevenue += (item.packet_quantity || 0) * (item.price_per_packet || 0)
-            } else {
-              khakhraRevenue += item.quantity_kg * item.price_per_kg
-            }
-          }
-        })
-      }
-
-      monthly.totalBhakarwadiSold += bhakarwadiKg
-      monthly.khakhraRevenue += khakhraRevenue
-      monthly.bhakarwadiRevenue += bhakarwadiRevenue
-      monthly.patraRevenue += order.wants_patra ? order.patra_packets * order.patra_price_per_packet : 0
-      monthly.fulvadiRevenue += order.wants_fulvadi ? order.fulvadi_packets * order.fulvadi_price_per_packet : 0
-
-      // Calculate profit breakdown
-      monthly.khakhraProfit += khakhraProfit
-      monthly.patraProfit += patraProfit
-      monthly.fulvadiProfit += fulvadiProfit
-
-      // Calculate Bhakarwadi profit separately
-      if (order.khakhra_items) {
-        order.khakhra_items.forEach((item) => {
-          if (item.khakhra_type.toLowerCase().includes("bhakarwadi")) {
-            if (item.is_packet_item) {
-              monthly.bhakarwadiProfit += (item.packet_quantity || 0) * 33 // Fixed profit per packet
-            } else {
-              monthly.bhakarwadiProfit += item.quantity_kg * 25 // Base profit per kg
-            }
-          }
-        })
-      }
-    })
-
-    return Array.from(monthlyMap.values()).sort((a, b) => {
-      if (a.year !== b.year) return b.year - a.year
-      return b.month.localeCompare(a.month)
-    })
-  }
-
-  const customerSummaries = calculateCustomerSummaries()
-  const monthlySummaries = calculateMonthlySummaries()
-
-  // Filter and sort customers
-  const filteredCustomers = customerSummaries
-    .filter((customer) => {
-      const matchesSearch =
-        customer.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.city.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesCity = cityFilter === "all" || customer.city === cityFilter
-      return matchesSearch && matchesCity
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "orders":
-          return b.totalOrders - a.totalOrders
-        case "amount":
-          return b.totalAmount - a.totalAmount
-        case "profit":
-          return (
-            b.totalKhakhraProfit +
-            b.totalPatraProfit +
-            b.totalFulvadiProfit -
-            (a.totalKhakhraProfit + a.totalPatraProfit + a.totalFulvadiProfit)
-          )
-        case "recent":
-          return new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
-        default:
-          return b.totalOrders - a.totalOrders
-      }
-    })
-
-  // Calculate overall stats
-  let overallKhakhraProfit = 0
-  let overallPatraProfit = 0
-  let overallFulvadiProfit = 0
-  orders.forEach((order) => {
-    const { khakhraProfit, patraProfit, fulvadiProfit } = calculateOrderProfit(order)
-    overallKhakhraProfit += khakhraProfit
-    overallPatraProfit += patraProfit
-    overallFulvadiProfit += fulvadiProfit
-  })
-
-  const overallStats = {
-    totalCustomers: customerSummaries.length,
-    totalOrders: orders.length,
-    totalRevenue: orders.reduce((sum, order) => sum + (order.total_amount || 0), 0),
-    totalKhakhraProfit: Math.round(overallKhakhraProfit),
-    totalPatraProfit: Math.round(overallPatraProfit),
-    totalFulvadiProfit: Math.round(overallFulvadiProfit),
-    totalKhakhraSold: Math.round(orders.reduce((sum, order) => sum + order.total_khakhra_kg, 0) * 10) / 10,
-    totalPatraSold: orders.reduce((sum, order) => sum + order.patra_packets, 0),
-    totalFulvadiSold: orders.reduce((sum, order) => sum + order.fulvadi_packets, 0),
-    avgOrdersPerCustomer:
-      customerSummaries.length > 0 ? Math.round((orders.length / customerSummaries.length) * 10) / 10 : 0,
-    topCustomer: filteredCustomers[0] || null,
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    })
-  }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-2 text-muted-foreground">Loading summary...</p>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg">Loading summary...</div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
-        {/* Header */}
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Business Summary</h2>
-          <p className="text-muted-foreground text-sm sm:text-base">
-            Complete overview of customers and monthly performance
-          </p>
-        </div>
-
-        {/* Overall Stats */}
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Total Customers
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-2xl font-bold">{overallStats.totalCustomers}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <ShoppingCart className="h-4 w-4" />
-                Total Orders
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-2xl font-bold">{overallStats.totalOrders}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <IndianRupee className="h-4 w-4" />
-                Total Revenue
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-2xl font-bold">₹{overallStats.totalRevenue.toLocaleString()}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Total Profit
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-2xl font-bold">
-                ₹
-                {(
-                  overallStats.totalKhakhraProfit +
-                  overallStats.totalPatraProfit +
-                  overallStats.totalFulvadiProfit
-                ).toLocaleString()}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs for Customer and Monthly Views */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="customers">Customer Summary</TabsTrigger>
-            <TabsTrigger value="monthly">Monthly Summary</TabsTrigger>
-          </TabsList>
-
-          {/* Customer Summary Tab */}
-          <TabsContent value="customers" className="space-y-6">
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search customers by shop name or city..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={cityFilter} onValueChange={setCityFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by city" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Cities</SelectItem>
-                  {CITIES.map((city) => (
-                    <SelectItem key={city} value={city}>
-                      {city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="orders">Most Orders</SelectItem>
-                  <SelectItem value="amount">Highest Revenue</SelectItem>
-                  <SelectItem value="profit">Most Profitable</SelectItem>
-                  <SelectItem value="recent">Most Recent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Customer List */}
-            <div className="space-y-4">
-              {filteredCustomers.length > 0 ? (
-                filteredCustomers.map((customer, index) => (
-                  <Card key={`${customer.shopName}-${customer.city}`} className="hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0 flex-1">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <span className="truncate">{customer.shopName}</span>
-                            {index === 0 && sortBy === "orders" && (
-                              <Badge variant="secondary" className="bg-gold-100 text-gold-800">
-                                Top Customer
-                              </Badge>
-                            )}
-                          </CardTitle>
-                          <CardDescription className="flex items-center gap-1 mt-1">
-                            <MapPin className="h-3 w-3" />
-                            {customer.city}
-                          </CardDescription>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-medium">{customer.totalOrders} Orders</div>
-                          <div className="text-xs text-muted-foreground">
-                            Last: {formatDate(customer.lastOrderDate)}
-                          </div>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {/* Summary Stats */}
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <IndianRupee className="h-4 w-4 text-green-600" />
-                          <div>
-                            <p className="text-muted-foreground">Revenue</p>
-                            <p className="font-semibold">₹{customer.totalAmount.toLocaleString()}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4 text-blue-600" />
-                          <div>
-                            <p className="text-muted-foreground">Khakhra Profit</p>
-                            <p className="font-semibold">₹{Math.round(customer.totalKhakhraProfit).toLocaleString()}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4 text-purple-600" />
-                          <div>
-                            <p className="text-muted-foreground">Patra Profit</p>
-                            <p className="font-semibold">₹{Math.round(customer.totalPatraProfit).toLocaleString()}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4 text-red-600" />
-                          <div>
-                            <p className="text-muted-foreground">Fulvadi Profit</p>
-                            <p className="font-semibold">₹{Math.round(customer.totalFulvadiProfit).toLocaleString()}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Package className="h-4 w-4 text-orange-600" />
-                          <div>
-                            <p className="text-muted-foreground">Khakhra Sold</p>
-                            <p className="font-semibold">{customer.totalKhakhraKg} kg</p>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              ) : (
-                <div className="text-center py-12">
-                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold">No customers found</h3>
-                  <p className="text-muted-foreground">
-                    {searchTerm || cityFilter !== "all"
-                      ? "Try adjusting your search or filters"
-                      : "No orders have been created yet"}
-                  </p>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* Monthly Summary Tab */}
-          <TabsContent value="monthly" className="space-y-6">
-            <div className="space-y-4">
-              {monthlySummaries.length > 0 ? (
-                monthlySummaries.map((monthly, index) => (
-                  <Card key={`${monthly.year}-${monthly.month}`} className="hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0 flex-1">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <Calendar className="h-5 w-5" />
-                            <span>
-                              {monthly.month} {monthly.year}
-                            </span>
-                          </CardTitle>
-                          <CardDescription className="mt-1">
-                            {monthly.totalOrders} orders • ₹{monthly.totalRevenue.toLocaleString()} revenue
-                          </CardDescription>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-lg font-bold text-green-600">
-                            ₹{Math.round(monthly.totalProfit).toLocaleString()}
-                          </div>
-                          <div className="text-xs text-muted-foreground">Total Profit</div>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {/* Revenue Breakdown */}
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                          <IndianRupee className="h-4 w-4" />
-                          Revenue Breakdown
-                        </h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4 text-blue-600" />
-                            <div>
-                              <p className="text-muted-foreground">Khakhra</p>
-                              <p className="font-semibold">₹{monthly.khakhraRevenue.toLocaleString()}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-purple-600" />
-                            <div>
-                              <p className="text-muted-foreground">Patra</p>
-                              <p className="font-semibold">₹{monthly.patraRevenue.toLocaleString()}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-amber-600" />
-                            <div>
-                              <p className="text-muted-foreground">Bhakarwadi</p>
-                              <p className="font-semibold">₹{monthly.bhakarwadiRevenue.toLocaleString()}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-red-600" />
-                            <div>
-                              <p className="text-muted-foreground">Fulvadi</p>
-                              <p className="font-semibold">₹{monthly.fulvadiRevenue.toLocaleString()}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Profit Breakdown */}
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4" />
-                          Profit Breakdown
-                        </h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4 text-blue-600" />
-                            <div>
-                              <p className="text-muted-foreground">Khakhra</p>
-                              <p className="font-semibold text-green-600">
-                                ₹{Math.round(monthly.khakhraProfit).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-purple-600" />
-                            <div>
-                              <p className="text-muted-foreground">Patra</p>
-                              <p className="font-semibold text-green-600">
-                                ₹{Math.round(monthly.patraProfit).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-amber-600" />
-                            <div>
-                              <p className="text-muted-foreground">Bhakarwadi</p>
-                              <p className="font-semibold text-green-600">
-                                ₹{Math.round(monthly.bhakarwadiProfit).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-red-600" />
-                            <div>
-                              <p className="text-muted-foreground">Fulvadi</p>
-                              <p className="font-semibold text-green-600">
-                                ₹{Math.round(monthly.fulvadiProfit).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Quantity Sold */}
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                          <ShoppingCart className="h-4 w-4" />
-                          Quantity Sold
-                        </h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4 text-green-600" />
-                            <div>
-                              <p className="text-muted-foreground">Khakhra</p>
-                              <p className="font-semibold">{Math.round(monthly.totalKhakhraSold * 10) / 10} kg</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-purple-600" />
-                            <div>
-                              <p className="text-muted-foreground">Patra</p>
-                              <p className="font-semibold">{monthly.totalPatraSold} packets</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-amber-600" />
-                            <div>
-                              <p className="text-muted-foreground">Bhakarwadi</p>
-                              <p className="font-semibold">{Math.round(monthly.totalBhakarwadiSold * 10) / 10} kg</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="h-4 w-4 text-red-600" />
-                            <div>
-                              <p className="text-muted-foreground">Fulvadi</p>
-                              <p className="font-semibold">{monthly.totalFulvadiSold} packets</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              ) : (
-                <div className="text-center py-12">
-                  <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold">No monthly data available</h3>
-                  <p className="text-muted-foreground">Create some orders to see monthly summaries</p>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Business Summary</h1>
+        <Badge variant="outline" className="text-sm">
+          Last updated: {format(new Date(), "PPp")}
+        </Badge>
       </div>
+
+      <Tabs defaultValue="overall" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="overall">Overall Summary</TabsTrigger>
+          <TabsTrigger value="monthly">Monthly Summary</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overall" className="space-y-6">
+          {/* Key Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalOrders}</div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                  <Badge variant="secondary" className="text-xs">
+                    {stats.pendingOrders} pending
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    {stats.completedOrders} completed
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <IndianRupee className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">₹{stats.totalRevenue.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Avg: ₹{stats.totalOrders > 0 ? Math.round(stats.totalRevenue / stats.totalOrders) : 0} per order
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">₹{stats.totalProfit.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stats.totalRevenue > 0 ? ((stats.totalProfit / stats.totalRevenue) * 100).toFixed(1) : 0}% margin
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Products Sold</CardTitle>
+                <CardDescription>Quantity sold by product category</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalKhakhraKg.toFixed(1)} kg</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  + {stats.totalPatraPackets} Patra + {stats.totalFulvadiPackets} Fulvadi
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Detailed Breakdown */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Product Sales Breakdown</CardTitle>
+                <CardDescription>Quantity sold by product category</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Khakhra (Total)</span>
+                  <span className="text-sm">{stats.totalKhakhraKg.toFixed(1)} kg</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Patra Packets</span>
+                  <span className="text-sm">{stats.totalPatraPackets} packets</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Bhakarwadi</span>
+                  <span className="text-sm">{stats.totalBhakarwadiKg.toFixed(1)} kg</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Fulvadi Packets</span>
+                  <span className="text-sm">{stats.totalFulvadiPackets} packets (500g each)</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Profit Breakdown</CardTitle>
+                <CardDescription>Profit by product category</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Khakhra Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.khakhraProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Patra Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.patraProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Bhakarwadi Profit</span>
+                  <span className="text-sm font-semibold text-green-600">
+                    ₹{stats.bhakarwadiProfit.toLocaleString()}
+                  </span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Fulvadi Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.fulvadiProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between font-semibold">
+                  <span className="text-sm">Total Profit</span>
+                  <span className="text-sm text-green-600">₹{stats.totalProfit.toLocaleString()}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="monthly" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Monthly Performance (Last 12 Months)
+              </CardTitle>
+              <CardDescription>
+                Month-wise breakdown of orders, revenue, and profit. Click to expand and view all orders.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Accordion type="single" collapsible className="w-full">
+                {monthlyStats.map((monthData, index) => {
+                  // Get all orders for this month
+                  const monthOrders = orders.filter((order) => {
+                    const orderDate = new Date(order.created_at)
+                    const orderMonth = orderDate.getMonth()
+                    const orderYear = orderDate.getFullYear()
+                    const statsMonth = new Date(`${monthData.month} 1, ${monthData.year}`).getMonth()
+                    const statsYear = monthData.year
+                    return orderMonth === statsMonth && orderYear === statsYear
+                  })
+
+                  return (
+                    <AccordionItem key={index} value={`month-${index}`} className="border rounded-lg mb-4">
+                      <AccordionTrigger className="hover:no-underline p-4 hover:bg-muted/50">
+                        <div className="flex items-center justify-between w-full mr-4">
+                          <h3 className="font-semibold text-lg">
+                            {monthData.month} {monthData.year}
+                          </h3>
+                          <div className="flex items-center gap-4 text-sm">
+                            <Badge variant={monthData.totalOrders > 0 ? "default" : "secondary"}>
+                              {monthData.totalOrders} orders
+                            </Badge>
+                            <span className="font-semibold text-green-600">
+                              ₹{monthData.totalProfit.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </AccordionTrigger>
+
+                      <AccordionContent className="p-4 border-t">
+                        {monthData.totalOrders > 0 ? (
+                          <div className="space-y-4">
+                            {/* Month Stats Summary */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
+                              <div>
+                                <p className="text-muted-foreground text-xs">Revenue</p>
+                                <p className="font-semibold">₹{monthData.totalRevenue.toLocaleString()}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Profit</p>
+                                <p className="font-semibold text-green-600">
+                                  ₹{monthData.totalProfit.toLocaleString()}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Khakhra Sold</p>
+                                <p className="font-semibold">{monthData.totalKhakhraKg.toFixed(1)} kg</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Profit Margin</p>
+                                <p className="font-semibold">
+                                  {monthData.totalRevenue > 0
+                                    ? ((monthData.totalProfit / monthData.totalRevenue) * 100).toFixed(1)
+                                    : 0}
+                                  %
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Orders List */}
+                            <div className="space-y-3">
+                              <h4 className="font-semibold text-sm">Orders in {monthData.month}</h4>
+                              <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {monthOrders.map((order) => {
+                                  const orderProfit = calculateOrderProfit(order)
+                                  return (
+                                    <div
+                                      key={order.id}
+                                      className="border rounded-lg p-4 hover:bg-muted/50 transition-colors space-y-3"
+                                    >
+                                      {/* Order Header */}
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <p className="font-semibold text-sm">{order.shop_name}</p>
+                                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                                            <MapPin className="h-3 w-3" />
+                                            <span>{order.city}</span>
+                                            <span>•</span>
+                                            <span>{format(new Date(order.created_at), "MMM dd, yyyy")}</span>
+                                          </div>
+                                        </div>
+                                        <Badge
+                                          variant={order.status === "completed" ? "default" : "secondary"}
+                                          className="text-xs"
+                                        >
+                                          {order.status}
+                                        </Badge>
+                                      </div>
+
+                                      <Separator className="my-2" />
+
+                                      {/* Items Breakdown */}
+                                      <div className="space-y-2">
+                                        <p className="font-medium text-sm">Items Ordered:</p>
+
+                                        {/* Khakhra Items */}
+                                        {order.khakhra_items && order.khakhra_items.length > 0 && (
+                                          <div className="space-y-1 ml-2">
+                                            {order.khakhra_items.map((item) => (
+                                              <div key={item.id} className="text-xs">
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">{item.khakhra_type}:</span>
+                                                  <span className="font-medium">
+                                                    {item.is_packet_item
+                                                      ? `${item.packet_quantity} packets`
+                                                      : `${item.quantity_kg} kg`}
+                                                  </span>
+                                                </div>
+                                                <div className="flex justify-between text-muted-foreground text-xs ml-2">
+                                                  <span>
+                                                    @ ₹{item.is_packet_item ? item.price_per_packet : item.price_per_kg}
+                                                    {item.is_packet_item ? "/packet" : "/kg"}
+                                                  </span>
+                                                  <span>= ₹{item.total_price}</span>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+
+                                        {/* Patra */}
+                                        {order.wants_patra && order.patra_packets > 0 && (
+                                          <div className="text-xs ml-2">
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">Patra:</span>
+                                              <span className="font-medium">{order.patra_packets} packets</span>
+                                            </div>
+                                            <div className="flex justify-between text-muted-foreground text-xs ml-2">
+                                              <span>@ ₹{order.patra_price_per_packet || 75}/packet</span>
+                                              <span>
+                                                = ₹{order.patra_packets * (order.patra_price_per_packet || 75)}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Fulvadi */}
+                                        {order.wants_fulvadi && order.fulvadi_packets && order.fulvadi_packets > 0 && (
+                                          <div className="text-xs ml-2">
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">Fulvadi (500g):</span>
+                                              <span className="font-medium">{order.fulvadi_packets} packets</span>
+                                            </div>
+                                            <div className="flex justify-between text-muted-foreground text-xs ml-2">
+                                              <span>@ ₹{order.fulvadi_price_per_packet || 90}/packet</span>
+                                              <span>
+                                                = ₹{order.fulvadi_packets * (order.fulvadi_price_per_packet || 90)}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <Separator className="my-2" />
+
+                                      {/* Order Summary */}
+                                      <div className="flex items-center justify-between">
+                                        <div className="space-y-1">
+                                          <div className="flex justify-between gap-6 text-sm">
+                                            <span className="text-muted-foreground">Total Amount:</span>
+                                            <span className="font-semibold">₹{order.total_amount}</span>
+                                          </div>
+                                          <div className="flex justify-between gap-6 text-sm">
+                                            <span className="text-muted-foreground">Total Profit:</span>
+                                            <span className="font-semibold text-green-600">
+                                              +₹{orderProfit.totalProfit.toFixed(0)}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between gap-6 text-xs text-muted-foreground">
+                                            <span>Profit Margin:</span>
+                                            <span>
+                                              {order.total_amount > 0
+                                                ? ((orderProfit.totalProfit / order.total_amount) * 100).toFixed(1)
+                                                : 0}
+                                              %
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground text-sm text-center py-4">No orders this month</p>
+                        )}
+                      </AccordionContent>
+                    </AccordionItem>
+                  )
+                })}
+              </Accordion>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

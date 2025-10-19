@@ -371,7 +371,7 @@ export default function ProductsPage() {
                   <li>
                     • Price Range: ₹{PATRA_PRICE_MIN}-{PATRA_PRICE_MAX}/packet
                   </li>
-                  <li>• Profit: ₹16-21/packet</li>
+                  <li>• Profit: ₹12.25-17.25/packet</li>
                   <li>• +₹1 profit per ₹1 price increase</li>
                 </ul>
               </div>
