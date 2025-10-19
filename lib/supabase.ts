@@ -47,7 +47,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -55,7 +55,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -63,7 +63,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -71,7 +71,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -79,7 +79,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -87,7 +87,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -95,7 +95,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -103,7 +103,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -111,7 +111,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -119,7 +119,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -127,7 +127,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
   {
@@ -135,7 +135,7 @@ export const KHAKHRA_TYPES = [
     category: "regular" as const,
     basePrice: 200,
     maxPrice: 225,
-    baseProfit: 20,
+    baseProfit: 21.40,
     sellBy: "kg" as const,
   },
 
@@ -145,7 +145,7 @@ export const KHAKHRA_TYPES = [
     category: "premium" as const,
     basePrice: 210,
     maxPrice: 225,
-    baseProfit: 25,
+    baseProfit: 26.40,
     sellBy: "kg" as const,
   },
   {
@@ -161,7 +161,7 @@ export const KHAKHRA_TYPES = [
     category: "premium" as const,
     basePrice: 210,
     maxPrice: 225,
-    baseProfit: 25,
+    baseProfit: 26.40,
     sellBy: "kg" as const,
   },
   {
@@ -169,7 +169,7 @@ export const KHAKHRA_TYPES = [
     category: "premium" as const,
     basePrice: 210,
     maxPrice: 225,
-    baseProfit: 25,
+    baseProfit: 26.40,
     sellBy: "kg" as const,
   },
   {
@@ -177,7 +177,7 @@ export const KHAKHRA_TYPES = [
     category: "premium" as const,
     basePrice: 210,
     maxPrice: 225,
-    baseProfit: 25,
+    baseProfit: 26.40,
     sellBy: "kg" as const,
   },
   {
@@ -185,7 +185,7 @@ export const KHAKHRA_TYPES = [
     category: "premium" as const,
     basePrice: 210,
     maxPrice: 225,
-    baseProfit: 25,
+    baseProfit: 26.40,
     sellBy: "kg" as const,
   },
   {
@@ -193,7 +193,7 @@ export const KHAKHRA_TYPES = [
     category: "premium" as const,
     basePrice: 210,
     maxPrice: 225,
-    baseProfit: 25,
+    baseProfit: 26.40,
     sellBy: "kg" as const,
   },
   {
