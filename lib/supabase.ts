@@ -329,6 +329,20 @@ export const KHAKHRA_TYPES = [
     baseProfit: 25, // 5 * 5 packets/kg = 25
     sellBy: "both" as const,
   },
+
+  {
+    name: "Rajasthani Chikki 200GM",
+    category: "chikki" as const,
+    basePacketPrice: 31, // Selling price per packet
+    maxPacketPrice: 40, // Max selling price per packet
+    basePacketCost: 27, // Our price per packet
+    basePacketProfit: 4, // ₹31 - ₹27 = ₹4 profit per packet
+    basePrice: 155, // 31 * 5 packets/kg = 155 (200g * 5 = 1kg)
+    maxPrice: 200, // 40 * 5 packets/kg = 200
+    baseProfit: 20, // 4 * 5 packets/kg = 20
+    mrp: 75, // MRP per packet
+    sellBy: "packet" as const,
+  },
 ]
 
 // Updated cities for your father's business coverage
@@ -375,6 +389,11 @@ export const BHAKARWADI_PACKET_PRICE = 60
 export const FULVADI_PRICE_MIN = 90
 export const FULVADI_PACKET_PRICE = 90
 
+export const CHIKKI_PRICE_MIN = 31
+export const CHIKKI_PRICE_MAX = 40
+export const CHIKKI_MRP = 75
+export const CHIKKI_COST = 27
+
 // Helper functions for dynamic pricing
 export const calculateDynamicProfit = (
   khakhraType: (typeof KHAKHRA_TYPES)[0],
@@ -386,7 +405,8 @@ export const calculateDynamicProfit = (
     (khakhraType.category === "bhakri" ||
       khakhraType.category === "farali" ||
       khakhraType.category === "bhakarwadi" ||
-      khakhraType.category === "fulvadi")
+      khakhraType.category === "fulvadi" ||
+      khakhraType.category === "chikki")
   ) {
     // For packet-based items: profit calculation
     if (khakhraType.category === "bhakarwadi") {
@@ -395,6 +415,8 @@ export const calculateDynamicProfit = (
     } else if (khakhraType.category === "fulvadi") {
       // Fulvadi has fixed MRP of ₹90, so profit is always ₹10 (₹90 - ₹80)
       return 10
+    } else if (khakhraType.category === "chikki") {
+      return actualPrice - 27
     } else {
       // For Bhakri/Farali: profit increases by ₹1 for every ₹1 increase from base packet price
       const basePacketPrice = khakhraType.basePacketPrice || 0
@@ -413,7 +435,8 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
     (khakhraType.category === "bhakri" ||
       khakhraType.category === "farali" ||
       khakhraType.category === "bhakarwadi" ||
-      khakhraType.category === "fulvadi")
+      khakhraType.category === "fulvadi" ||
+      khakhraType.category === "chikki")
   ) {
     if (khakhraType.category === "bhakarwadi") {
       // Bhakarwadi has fixed MRP
@@ -421,6 +444,9 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
     } else if (khakhraType.category === "fulvadi") {
       // Fulvadi has fixed MRP
       return [90]
+    } else if (khakhraType.category === "chikki") {
+      // Chikki has fixed MRP
+      return [75]
     } else {
       const basePacketPrice = khakhraType.basePacketPrice || 0
       const maxPacketPrice = khakhraType.maxPacketPrice || 0
@@ -454,10 +480,11 @@ export const calculatePatraProfit = (pricePerPacket: number): number => {
 // Update the calculateOrderProfit function to return separate profits
 export const calculateOrderProfit = (
   order: Order,
-): { khakhraProfit: number; patraProfit: number; fulvadiProfit: number; totalProfit: number } => {
+): { khakhraProfit: number; patraProfit: number; fulvadiProfit: number; chikkiProfit: number; totalProfit: number } => {
   let khakhraProfit = 0
   let patraProfit = 0
   let fulvadiProfit = 0
+  let chikkiProfit = 0
 
   // Calculate khakhra profit with dynamic pricing
   if (order.khakhra_items) {
@@ -496,7 +523,25 @@ export const calculateOrderProfit = (
     fulvadiProfit += order.fulvadi_packets * profitPerPacket
   }
 
-  return { khakhraProfit, patraProfit, fulvadiProfit, totalProfit: khakhraProfit + patraProfit + fulvadiProfit }
+  // Add chikki profit with dynamic calculation
+  if (order.khakhra_items) {
+    const chikkiItems = order.khakhra_items.filter((item) => item.khakhra_type === "Rajasthani Chikki 200GM")
+    chikkiProfit += chikkiItems.reduce((sum, item) => {
+      const chikkiType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
+      if (!chikkiType) return sum
+
+      const packetProfit = calculateDynamicProfit(chikkiType, item.price_per_packet || CHIKKI_MRP, true)
+      return sum + item.packet_quantity! * packetProfit
+    }, 0)
+  }
+
+  return {
+    khakhraProfit,
+    patraProfit,
+    fulvadiProfit,
+    chikkiProfit,
+    totalProfit: khakhraProfit + patraProfit + fulvadiProfit + chikkiProfit,
+  }
 }
 
 // Helper function to get khakhra types by category
@@ -507,8 +552,9 @@ export const getKhakhraTypesByCategory = () => {
   const farali = KHAKHRA_TYPES.filter((k) => k.category === "farali")
   const bhakarwadi = KHAKHRA_TYPES.filter((k) => k.category === "bhakarwadi")
   const fulvadi = KHAKHRA_TYPES.filter((k) => k.category === "fulvadi")
+  const chikki = KHAKHRA_TYPES.filter((k) => k.category === "chikki")
 
-  return { regular, premium, bhakri, farali, bhakarwadi, fulvadi }
+  return { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki }
 }
 
 // Helper function to calculate packet equivalent
