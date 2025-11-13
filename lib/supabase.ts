@@ -295,21 +295,6 @@ export const KHAKHRA_TYPES = [
     packetWeight: 0.5, // 500g = 0.5kg
   },
 
-  // NEW: Chikki varieties - ₹31 per 200g packet (profit varies with price)
-  {
-    name: "Chikki",
-    category: "chikki" as const,
-    basePrice: 155, // ₹31 per 200g = ₹155 per kg
-    maxPrice: 200, // Allow flexibility up to ₹40 per 200g
-    baseProfit: 35, // ₹7 profit per 200g = ₹35 per kg
-    sellBy: "packet" as const,
-    basePacketPrice: 31, // Selling price per 200g packet
-    maxPacketPrice: 40,
-    basePacketProfit: 7, // ₹31 - ₹24 = ₹7 base profit per packet
-    basePacketCost: CHIKKI_COST_PER_PACKET,
-    packetWeight: 0.2, // 200g packets
-  },
-
   // Farali Khakhra - sold by packets (200g) or kg
   {
     name: "Farali Khakhra Regular",
