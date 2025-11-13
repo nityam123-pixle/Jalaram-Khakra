@@ -5,7 +5,14 @@ import { NewOrderDialog } from "@/components/new-order-dialog"
 import { StatsCard } from "@/components/stats-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { calculateOrderProfit, type Order, supabase, KHAKHRA_TYPES, calculateDynamicProfit } from "@/lib/supabase"
+import {
+  calculateOrderProfit,
+  type Order,
+  supabase,
+  KHAKHRA_TYPES,
+  calculateDynamicProfit,
+  calculateOrderTotalAmount,
+} from "@/lib/supabase"
 import { CheckCircle, Clock, Plus, ShoppingCart, TrendingUp, IndianRupee, Package, ShoppingBag } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -20,9 +27,11 @@ export default function Dashboard() {
     totalKhakhraProfit: 0,
     totalPatraProfit: 0,
     totalBhakarwadiProfit: 0,
+    totalChikkiProfit: 0,
     totalKhakhraSold: 0,
     totalBhakarwadiSold: 0,
     totalPatraSold: 0,
+    totalChikkiSold: 0,
   })
 
   const fetchOrders = async () => {
@@ -43,17 +52,22 @@ export default function Dashboard() {
       const total = data?.length || 0
       const pending = data?.filter((order) => order.status === "pending").length || 0
       const completed = data?.filter((order) => order.status === "completed").length || 0
-      const totalEarnings = data?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0
+      const totalEarnings =
+        data?.reduce((sum, order) => {
+          return sum + calculateOrderTotalAmount(order)
+        }, 0) || 0
 
       let totalKhakhraProfit = 0
       let totalPatraProfit = 0
       let totalBhakarwadiProfit = 0
+      let totalChikkiProfit = 0
       let totalKhakhraSold = 0
       let totalBhakarwadiSold = 0
       let totalPatraSold = 0
+      let totalChikkiSold = 0
 
       data?.forEach((order) => {
-        const { khakhraProfit, patraProfit } = calculateOrderProfit(order)
+        const { khakhraProfit, patraProfit, chikkiProfit } = calculateOrderProfit(order)
 
         // Separate Bhakarwadi from regular Khakhra
         let regularKhakhraProfit = 0
@@ -62,10 +76,15 @@ export default function Dashboard() {
         let bhakarwadiSoldKg = 0
 
         if (order.khakhra_items) {
-          order.khakhra_items.forEach((item) => {
+          order.khakhra_items.forEach((item: any) => {
             const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
 
-            if (khakhraType?.category === "bhakarwadi") {
+            if (!khakhraType) return
+
+            // Skip Chikki items - they are calculated separately from order fields
+            if (khakhraType.category === "chikki") return
+
+            if (khakhraType.category === "bhakarwadi") {
               // This is Bhakarwadi
               if (item.is_packet_item && item.packet_quantity && item.price_per_packet) {
                 const packetProfit = calculateDynamicProfit(khakhraType, item.price_per_packet, true)
@@ -93,9 +112,11 @@ export default function Dashboard() {
         totalKhakhraProfit += regularKhakhraProfit
         totalBhakarwadiProfit += bhakarwadiProfit
         totalPatraProfit += patraProfit
+        totalChikkiProfit += chikkiProfit
         totalKhakhraSold += regularKhakhraSold
         totalBhakarwadiSold += bhakarwadiSoldKg
         totalPatraSold += order.patra_packets || 0
+        totalChikkiSold += order.chikki_packets || 0
       })
 
       setStats({
@@ -106,9 +127,11 @@ export default function Dashboard() {
         totalKhakhraProfit: Math.round(totalKhakhraProfit),
         totalPatraProfit: Math.round(totalPatraProfit),
         totalBhakarwadiProfit: Math.round(totalBhakarwadiProfit),
+        totalChikkiProfit: Math.round(totalChikkiProfit),
         totalKhakhraSold: Math.round(totalKhakhraSold * 10) / 10,
         totalBhakarwadiSold: Math.round(totalBhakarwadiSold * 10) / 10,
         totalPatraSold,
+        totalChikkiSold,
       })
     } catch (error) {
       console.error("Error fetching orders:", error)
@@ -192,10 +215,10 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
-              ₹{(stats.totalKhakhraProfit + stats.totalPatraProfit + stats.totalBhakarwadiProfit).toLocaleString()}{" "}
+              ₹{(stats.totalKhakhraProfit + stats.totalPatraProfit + stats.totalBhakarwadiProfit + stats.totalChikkiProfit).toLocaleString()}{" "}
               Total Profit
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="space-y-1">
                 <p className="text-sm text-green-700 dark:text-green-300">Khakhra Profit</p>
                 <div className="text-xl font-bold text-green-600 dark:text-green-400">
@@ -226,11 +249,22 @@ export default function Dashboard() {
                   {stats.totalPatraSold} packets sold
                 </p>
               </div>
+              <div className="space-y-1">
+                <p className="text-sm text-green-700 dark:text-green-300">Chikki Profit</p>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  ₹{stats.totalChikkiProfit.toLocaleString()}
+                </div>
+                <p className="text-xs text-green-600/70 dark:text-green-400/70">
+                  <ShoppingBag className="inline-block h-3 w-3 mr-1" />
+                  {stats.totalChikkiSold} packets sold
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Analytics Chart */}
+
         <div className="w-full">
           <KhakhraAnalyticsChart orders={orders} />
         </div>
@@ -244,26 +278,29 @@ export default function Dashboard() {
             <CardContent className="pt-0">
               {recentOrders.length > 0 ? (
                 <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {recentOrders.map((order) => (
-                    <div key={order.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm truncate">{order.shop_name}</p>
-                        <p className="text-xs text-muted-foreground">{order.city}</p>
+                  {recentOrders.map((order) => {
+                    const orderTotal = calculateOrderTotalAmount(order)
+                    return (
+                      <div key={order.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm truncate">{order.shop_name}</p>
+                          <p className="text-xs text-muted-foreground">{order.city}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0 ml-2">
+                          <p className="text-sm font-medium">₹{orderTotal}</p>
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              order.status === "completed"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+                            }`}
+                          >
+                            {order.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-right flex-shrink-0 ml-2">
-                        <p className="text-sm font-medium">₹{order.total_amount}</p>
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            order.status === "completed"
-                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="text-muted-foreground text-center py-8 text-sm">No orders yet</p>
@@ -300,7 +337,7 @@ export default function Dashboard() {
                   <span className="font-medium text-sm text-green-600 dark:text-green-400">
                     {stats.totalEarnings > 0
                       ? Math.round(
-                          ((stats.totalKhakhraProfit + stats.totalPatraProfit + stats.totalBhakarwadiProfit) /
+                          ((stats.totalKhakhraProfit + stats.totalPatraProfit + stats.totalBhakarwadiProfit + stats.totalChikkiProfit) /
                             stats.totalEarnings) *
                             100,
                         )

@@ -18,6 +18,9 @@ export type Order = {
   wants_fulvadi?: boolean
   fulvadi_packets?: number
   fulvadi_price_per_packet?: number
+  wants_chikki?: boolean
+  chikki_packets?: number
+  chikki_price_per_packet?: number
   total_khakhra_kg: number
   total_amount: number
   created_at: string
@@ -292,6 +295,21 @@ export const KHAKHRA_TYPES = [
     packetWeight: 0.5, // 500g = 0.5kg
   },
 
+  // NEW: Chikki varieties - ₹31 per 200g packet (profit varies with price)
+  {
+    name: "Chikki",
+    category: "chikki" as const,
+    basePrice: 155, // ₹31 per 200g = ₹155 per kg
+    maxPrice: 200, // Allow flexibility up to ₹40 per 200g
+    baseProfit: 35, // ₹7 profit per 200g = ₹35 per kg
+    sellBy: "packet" as const,
+    basePacketPrice: 31, // Selling price per 200g packet
+    maxPacketPrice: 40,
+    basePacketProfit: 7, // ₹31 - ₹24 = ₹7 base profit per packet
+    basePacketCost: CHIKKI_COST_PER_PACKET,
+    packetWeight: 0.2, // 200g packets
+  },
+
   // Farali Khakhra - sold by packets (200g) or kg
   {
     name: "Farali Khakhra Regular",
@@ -389,10 +407,11 @@ export const BHAKARWADI_PACKET_PRICE = 60
 export const FULVADI_PRICE_MIN = 90
 export const FULVADI_PACKET_PRICE = 90
 
+// NEW: Chikki pricing constants
 export const CHIKKI_PRICE_MIN = 31
 export const CHIKKI_PRICE_MAX = 40
-export const CHIKKI_MRP = 75
-export const CHIKKI_COST = 27
+export const CHIKKI_MRP = 75  // MRP shown on UI
+export const CHIKKI_COST_PER_PACKET = 27  // your cost used in profit calculation
 
 // Helper functions for dynamic pricing
 export const calculateDynamicProfit = (
@@ -477,21 +496,35 @@ export const calculatePatraProfit = (pricePerPacket: number): number => {
   return basePatraProfit + (pricePerPacket - basePatraPrice)
 }
 
+export const calculateChikkiProfit = (pricePerPacket: number): number => {
+  return Math.max(pricePerPacket - CHIKKI_COST_PER_PACKET, 0)
+}
+
 // Update the calculateOrderProfit function to return separate profits
 export const calculateOrderProfit = (
-  order: Order,
-): { khakhraProfit: number; patraProfit: number; fulvadiProfit: number; chikkiProfit: number; totalProfit: number } => {
+    order: Order,
+  ): {
+    khakhraProfit: number
+    patraProfit: number
+    fulvadiProfit: number
+    chikkiProfit: number
+    totalProfit: number
+  } => {
   let khakhraProfit = 0
   let patraProfit = 0
   let fulvadiProfit = 0
   let chikkiProfit = 0
 
   // Calculate khakhra profit with dynamic pricing
+  // Exclude Chikki items from khakhra profit (Chikki is calculated separately from order fields)
   if (order.khakhra_items) {
     khakhraProfit += order.khakhra_items.reduce((sum, item) => {
       const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
 
       if (!khakhraType) return sum
+
+      // Skip Chikki items - they are calculated separately from order fields
+      if (khakhraType.category === "chikki") return sum
 
       // Check if this is a packet-based item
       if (item.is_packet_item && item.packet_quantity && item.price_per_packet) {
@@ -523,16 +556,11 @@ export const calculateOrderProfit = (
     fulvadiProfit += order.fulvadi_packets * profitPerPacket
   }
 
-  // Add chikki profit with dynamic calculation
-  if (order.khakhra_items) {
-    const chikkiItems = order.khakhra_items.filter((item) => item.khakhra_type === "Rajasthani Chikki 200GM")
-    chikkiProfit += chikkiItems.reduce((sum, item) => {
-      const chikkiType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
-      if (!chikkiType) return sum
-
-      const packetProfit = calculateDynamicProfit(chikkiType, item.price_per_packet || CHIKKI_MRP, true)
-      return sum + item.packet_quantity! * packetProfit
-    }, 0)
+  // Add chikki profit with dynamic calculation (from order fields, not khakhra_items)
+  if (order.wants_chikki && order.chikki_packets) {
+    const chikkiPrice = order.chikki_price_per_packet || CHIKKI_PRICE_MIN
+    const profitPerPacket = calculateChikkiProfit(chikkiPrice)
+    chikkiProfit += order.chikki_packets * profitPerPacket
   }
 
   return {
@@ -564,4 +592,43 @@ export const convertKgToPackets = (kg: number, packetWeight = 0.2): number => {
 
 export const convertPacketsToKg = (packets: number, packetWeight = 0.2): number => {
   return packets * packetWeight // Default 200g packets, but can handle 500g for Fulvadi
+}
+
+export const calculateOrderTotalAmount = (order: Order): number => {
+  if (order.total_amount && order.total_amount > 0) {
+    return order.total_amount
+  }
+
+  let total = 0
+
+  if (order.khakhra_items && order.khakhra_items.length > 0) {
+    total += order.khakhra_items.reduce((sum, item) => {
+      if (item.total_price && item.total_price > 0) {
+        return sum + item.total_price
+      }
+
+      if (item.is_packet_item && item.packet_quantity && item.price_per_packet) {
+        return sum + item.packet_quantity * item.price_per_packet
+      }
+
+      return sum + item.quantity_kg * item.price_per_kg
+    }, 0)
+  }
+
+  if (order.wants_patra) {
+    const pricePerPacket = order.patra_price_per_packet || PATRA_PRICE_MIN
+    total += order.patra_packets * pricePerPacket
+  }
+
+  if (order.wants_fulvadi && order.fulvadi_packets) {
+    const pricePerPacket = order.fulvadi_price_per_packet || FULVADI_PACKET_PRICE
+    total += order.fulvadi_packets * pricePerPacket
+  }
+
+  if (order.wants_chikki && order.chikki_packets) {
+    const pricePerPacket = order.chikki_price_per_packet || CHIKKI_PRICE_MIN
+    total += order.chikki_packets * pricePerPacket
+  }
+
+  return total
 }

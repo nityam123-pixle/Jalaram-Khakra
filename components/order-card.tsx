@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import type { Order } from "@/lib/supabase"
+import { type Order, calculateOrderTotalAmount } from "@/lib/supabase"
 import { MapPin, MoreHorizontal, Package, ShoppingBag, IndianRupee, Clock } from "lucide-react"
 
 interface OrderCardProps {
@@ -34,6 +34,8 @@ export function OrderCard({ order, onStatusChange, onEdit, onDelete }: OrderCard
       hour12: true,
     })
   }
+
+  const orderTotal = calculateOrderTotalAmount(order)
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -96,19 +98,19 @@ export function OrderCard({ order, onStatusChange, onEdit, onDelete }: OrderCard
             </div>
           )}
 
-          {(order as any).wants_chikki && (
+          {order.wants_chikki && (
             <div className="flex items-center gap-1">
               <ShoppingBag className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{(order as any).chikki_packets}</span>
-              <span className="text-muted-foreground">Chikki @ ₹{(order as any).chikki_price_per_packet || 31}</span>
+              <span className="font-medium">{order.chikki_packets || 0}</span>
+              <span className="text-muted-foreground">Chikki @ ₹{order.chikki_price_per_packet || 31}</span>
             </div>
           )}
 
-          {(order as any).wants_fulvadi && (
+          {order.wants_fulvadi && (
             <div className="flex items-center gap-1">
               <ShoppingBag className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{(order as any).fulvadi_packets}</span>
-              <span className="text-muted-foreground">Fulvadi @ ₹{(order as any).fulvadi_price_per_packet || 90}</span>
+              <span className="font-medium">{order.fulvadi_packets}</span>
+              <span className="text-muted-foreground">Fulvadi @ ₹{order.fulvadi_price_per_packet || 90}</span>
             </div>
           )}
         </div>
@@ -134,7 +136,7 @@ export function OrderCard({ order, onStatusChange, onEdit, onDelete }: OrderCard
           <span className="text-sm font-medium">Order Total:</span>
           <div className="flex items-center gap-1 font-semibold text-lg">
             <IndianRupee className="h-4 w-4" />
-            <span>{order.total_amount || 0}</span>
+            <span>{orderTotal}</span>
           </div>
         </div>
 
