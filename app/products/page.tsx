@@ -2,11 +2,17 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getKhakhraTypesByCategory, PATRA_PRICE_MIN, PATRA_PRICE_MAX } from "@/lib/supabase"
+import {
+  getKhakhraTypesByCategory,
+  PATRA_PRICE_MIN,
+  PATRA_PRICE_MAX,
+  CHIKKI_PRICE_MIN,
+  CHIKKI_PRICE_MAX,
+} from "@/lib/supabase"
 import { Package, IndianRupee, ShoppingBag, TrendingUp } from "lucide-react"
 
 export default function ProductsPage() {
-  const { regular, premium, bhakri, farali, bhakarwadi, fulvadi } = getKhakhraTypesByCategory()
+  const { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki } = getKhakhraTypesByCategory()
 
   return (
     <div className="h-full overflow-auto">
@@ -15,7 +21,7 @@ export default function ProductsPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Products & Pricing</h2>
           <p className="text-muted-foreground">
-            Flexible pricing for all Khakhra varieties, Bhakarwadi, Fulvadi, and Patra options
+            Flexible pricing for all Khakhra varieties, Bhakarwadi, Fulvadi, Patra, and Chikki options
           </p>
         </div>
 
@@ -183,7 +189,7 @@ export default function ProductsPage() {
             </CardContent>
           </Card>
 
-          {/* NEW: Fulvadi Options */}
+          {/* Fulvadi Options */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -264,6 +270,52 @@ export default function ProductsPage() {
                         <span className="text-muted-foreground">Per kg:</span>
                         <Badge variant="outline" className="bg-orange-50 text-orange-700 text-xs">
                           ₹{type.basePrice}-{type.maxPrice}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5" />
+                Rajasthani Chikki
+              </CardTitle>
+              <div className="flex items-center gap-1 text-lg font-semibold text-rose-600">
+                <IndianRupee className="h-4 w-4" />
+                <span>
+                  {CHIKKI_PRICE_MIN}-{CHIKKI_PRICE_MAX} per packet
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {chikki.map((type) => (
+                  <div key={type.name} className="p-2 border rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">{type.name}</span>
+                    </div>
+                    <div className="flex flex-col gap-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Per packet (200g):</span>
+                        <Badge variant="outline" className="bg-rose-50 text-rose-700 text-xs">
+                          ₹{CHIKKI_PRICE_MIN}-{CHIKKI_PRICE_MAX}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Our cost:</span>
+                        <Badge variant="outline" className="bg-gray-50 text-gray-700 text-xs">
+                          ₹27
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Profit/packet:</span>
+                        <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
+                          ₹4-13
                         </Badge>
                       </div>
                     </div>
@@ -372,6 +424,17 @@ export default function ProductsPage() {
                     • Price Range: ₹{PATRA_PRICE_MIN}-{PATRA_PRICE_MAX}/packet
                   </li>
                   <li>• Profit: ₹12.25-17.25/packet</li>
+                  <li>• +₹1 profit per ₹1 price increase</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
+                <h4 className="font-semibold mb-2">Rajasthani Chikki</h4>
+                <ul className="space-y-1 text-muted-foreground">
+                  <li>
+                    • Price Range: ₹{CHIKKI_PRICE_MIN}-{CHIKKI_PRICE_MAX}/packet
+                  </li>
+                  <li>• Our cost: ₹27/packet</li>
+                  <li>• Profit: ₹4-13/packet</li>
                   <li>• +₹1 profit per ₹1 price increase</li>
                 </ul>
               </div>

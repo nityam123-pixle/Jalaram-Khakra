@@ -79,25 +79,43 @@ export function OrderCard({ order, onStatusChange, onEdit, onDelete }: OrderCard
       <CardContent className="space-y-3">
         <div className="text-sm text-muted-foreground">{order.address}</div>
 
-        <div className="flex items-center gap-4 text-sm">
-          <div className="flex items-center gap-1">
-            <Package className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{order.total_khakhra_kg} kg</span>
-            <span className="text-muted-foreground">Khakhra</span>
-          </div>
+        <div className="flex flex-col gap-2 text-sm">
+          {order.total_khakhra_kg > 0 && (
+            <div className="flex items-center gap-1">
+              <Package className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{order.total_khakhra_kg} kg</span>
+              <span className="text-muted-foreground">Khakhra</span>
+            </div>
+          )}
 
           {order.wants_patra && (
             <div className="flex items-center gap-1">
               <ShoppingBag className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">{order.patra_packets}</span>
-              <span className="text-muted-foreground">Patra @ ₹{order.patra_price_per_packet || 80}</span>
+              <span className="text-muted-foreground">Patra @ ₹{order.patra_price_per_packet || 75}</span>
+            </div>
+          )}
+
+          {(order as any).wants_chikki && (
+            <div className="flex items-center gap-1">
+              <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{(order as any).chikki_packets}</span>
+              <span className="text-muted-foreground">Chikki @ ₹{(order as any).chikki_price_per_packet || 31}</span>
+            </div>
+          )}
+
+          {(order as any).wants_fulvadi && (
+            <div className="flex items-center gap-1">
+              <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{(order as any).fulvadi_packets}</span>
+              <span className="text-muted-foreground">Fulvadi @ ₹{(order as any).fulvadi_price_per_packet || 90}</span>
             </div>
           )}
         </div>
 
         {order.khakhra_items && order.khakhra_items.length > 0 && (
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">Khakhra Items:</div>
+            <div className="text-xs font-medium text-muted-foreground">Items:</div>
             <div className="flex flex-wrap gap-1">
               {order.khakhra_items.map((item) => (
                 <Badge key={item.id} variant="outline" className="text-xs">

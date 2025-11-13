@@ -14,6 +14,9 @@ import {
   KHAKHRA_TYPES,
   PATRA_PRICE_MIN,
   PATRA_PRICE_MAX,
+  CHIKKI_PRICE_MIN,
+  CHIKKI_PRICE_MAX,
+  CHIKKI_MRP,
   BHAKARWADI_PRICE_MIN,
   BHAKARWADI_PACKET_PRICE,
   supabase,
@@ -49,6 +52,9 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const [wantsPatra, setWantsPatra] = useState(false)
   const [patraPackets, setPatraPackets] = useState(0)
   const [patraPrice, setPatraPrice] = useState(PATRA_PRICE_MIN)
+  const [wantsChikki, setWantsChikki] = useState(false)
+  const [chikkiPackets, setChikkiPackets] = useState(0)
+  const [chikkiPrice, setChikkiPrice] = useState(CHIKKI_PRICE_MIN)
   const [wantsBhakarwadi, setWantsBhakarwadi] = useState(false)
   const [bhakarwadiItems, setBhakarwadiItems] = useState<
     {
@@ -235,7 +241,8 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     }, 0)
 
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
-    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal
+    const chikkiTotal = wantsChikki ? chikkiPackets * (chikkiPrice || CHIKKI_PRICE_MIN) : 0
+    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + chikkiTotal
   }
 
   const resetForm = () => {
@@ -246,6 +253,9 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     setWantsPatra(false)
     setPatraPackets(0)
     setPatraPrice(PATRA_PRICE_MIN)
+    setWantsChikki(false)
+    setChikkiPackets(0)
+    setChikkiPrice(CHIKKI_PRICE_MIN)
     setWantsBhakarwadi(false)
     setBhakarwadiItems([])
     setWantsFulvadi(false)
@@ -288,11 +298,12 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         validKhakhraItems.length === 0 &&
         validBhakarwadiItems.length === 0 &&
         validFulvadiItems.length === 0 &&
-        !wantsPatra
+        !wantsPatra &&
+        !wantsChikki
       ) {
         toast({
           title: "Error",
-          description: "Please add at least one item or select Patra",
+          description: "Please add at least one item or select Patra/Chikki",
           variant: "destructive",
         })
         return
@@ -302,6 +313,15 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         toast({
           title: "Error",
           description: "Please specify the number of Patra packets",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (wantsChikki && chikkiPackets <= 0) {
+        toast({
+          title: "Error",
+          description: "Please specify the number of Chikki packets",
           variant: "destructive",
         })
         return
@@ -342,6 +362,9 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         wants_patra: wantsPatra,
         patra_packets: wantsPatra ? patraPackets : 0,
         patra_price_per_packet: patraPrice || PATRA_PRICE_MIN,
+        wants_chikki: wantsChikki,
+        chikki_packets: wantsChikki ? chikkiPackets : 0,
+        chikki_price_per_packet: chikkiPrice || CHIKKI_PRICE_MIN,
         total_khakhra_kg: totalKhakhraKg,
         total_amount: totalAmount,
         status: "pending",
@@ -560,6 +583,59 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                   <Label>Total</Label>
                   <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
                     ₹{patraPackets * patraPrice}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Rajasthani Chikki Option</h3>
+            <div className="flex items-center space-x-2">
+              <Switch id="wantsChikki" checked={wantsChikki} onCheckedChange={setWantsChikki} />
+              <Label htmlFor="wantsChikki">
+                Customer wants Chikki (₹{CHIKKI_PRICE_MIN}-₹{CHIKKI_PRICE_MAX} per 200gm packet, MRP ₹{CHIKKI_MRP})
+              </Label>
+            </div>
+            {wantsChikki && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="chikkiPackets">Number of packets *</Label>
+                  <Input
+                    id="chikkiPackets"
+                    type="number"
+                    min="1"
+                    value={chikkiPackets}
+                    onChange={(e) => setChikkiPackets(Number.parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    required={wantsChikki}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="chikkiPrice">Price per packet</Label>
+                  <Select
+                    value={chikkiPrice.toString()}
+                    onValueChange={(value) => setChikkiPrice(Number.parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from(
+                        { length: CHIKKI_PRICE_MAX - CHIKKI_PRICE_MIN + 1 },
+                        (_, i) => CHIKKI_PRICE_MIN + i,
+                      ).map((price) => (
+                        <SelectItem key={price} value={price.toString()}>
+                          ₹{price}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Total</Label>
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
+                    ₹{chikkiPackets * chikkiPrice}
                   </div>
                 </div>
               </div>

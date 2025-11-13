@@ -141,7 +141,9 @@ export default function OrdersPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold tracking-tight">Orders</h2>
-            <p className="text-muted-foreground">Manage all your Khakhra and Patra orders</p>
+            <p className="text-muted-foreground">
+              Manage all your Khakhra, Patra, Chikki, Bhakarwadi, and Fulvadi orders
+            </p>
           </div>
           <NewOrderDialog
             trigger={
