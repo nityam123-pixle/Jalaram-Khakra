@@ -346,6 +346,28 @@ export const KHAKHRA_TYPES = [
     mrp: 75, // MRP per packet
     sellBy: "packet" as const,
   },
+
+  // Sejwan Spring Viti - NEW optional snack category (1kg and 200g packs), separate from original Patra
+  {
+    name: "Sejwan Spring Viti 1kg",
+    category: "sejwan" as const,
+    sellBy: "packet" as const,
+    basePacketPrice: 225, // Selling rate 225-240
+    maxPacketPrice: 240,
+    basePacketCost: 205, // Our price 205
+    basePacketProfit: 20, // 225 - 205
+    packetWeight: 1, // 1 kg pack
+  },
+  {
+    name: "Sejwan Spring Viti 200g",
+    category: "sejwan" as const,
+    sellBy: "packet" as const,
+    basePacketPrice: 46, // Selling rate 46-60
+    maxPacketPrice: 60,
+    basePacketCost: 41, // Our price 41
+    basePacketProfit: 5, // 46 - 41
+    packetWeight: 0.2, // 200g pack
+  },
 ]
 
 // Updated cities for your father's business coverage
@@ -378,10 +400,18 @@ export const CITIES = [
   "Jetpur",
 ]
 
-// Patra pricing range
-export const PATRA_PRICE_MIN = 75 // Updated min price
-export const PATRA_PRICE_MAX = 90 // Updated max price
-export const PATRA_PRICE = 75 // Default price
+// Original Patra (order-level: wants_patra, patra_packets, patra_price_per_packet)
+export const PATRA_PRICE_MIN = 75
+export const PATRA_PRICE_MAX = 90
+export const PATRA_PRICE = 75
+
+// Sejwan Spring Viti (new snack category, stored in khakhra_items)
+export const PATRA_1KG_PRICE_MIN = 225
+export const PATRA_1KG_PRICE_MAX = 240
+export const PATRA_1KG_COST = 205
+export const PATRA_200G_PRICE_MIN = 46
+export const PATRA_200G_PRICE_MAX = 60
+export const PATRA_200G_COST = 41
 
 // NEW: Bhakarwadi pricing constants
 export const BHAKARWADI_PRICE_MIN = 160
@@ -410,10 +440,14 @@ export const calculateDynamicProfit = (
       khakhraType.category === "farali" ||
       khakhraType.category === "bhakarwadi" ||
       khakhraType.category === "fulvadi" ||
-      khakhraType.category === "chikki")
+      khakhraType.category === "chikki" ||
+      khakhraType.category === "sejwan")
   ) {
     // For packet-based items: profit calculation
-    if (khakhraType.category === "bhakarwadi") {
+    if (khakhraType.category === "sejwan") {
+      const cost = khakhraType.basePacketCost ?? 0
+      return actualPrice - cost
+    } else if (khakhraType.category === "bhakarwadi") {
       // Bhakarwadi has fixed MRP of ₹60, so profit is always ₹33 (₹60 - ₹27)
       return 33
     } else if (khakhraType.category === "fulvadi") {
@@ -440,8 +474,14 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
       khakhraType.category === "farali" ||
       khakhraType.category === "bhakarwadi" ||
       khakhraType.category === "fulvadi" ||
-      khakhraType.category === "chikki")
+      khakhraType.category === "chikki" ||
+      khakhraType.category === "sejwan")
   ) {
+    if (khakhraType.category === "sejwan") {
+      const base = khakhraType.basePacketPrice ?? 0
+      const max = khakhraType.maxPacketPrice ?? base
+      return Array.from({ length: max - base + 1 }, (_, i) => base + i)
+    }
     if (khakhraType.category === "bhakarwadi") {
       // Bhakarwadi has fixed MRP
       return [60]
@@ -501,7 +541,7 @@ export const calculateOrderProfit = (
   let chikkiProfit = 0
 
   // Calculate khakhra profit with dynamic pricing
-  // Exclude Chikki items from khakhra profit (Chikki is calculated separately from order fields)
+  // Exclude Chikki (order fields) and Sejwan (summed into patraProfit below)
   if (order.khakhra_items) {
     khakhraProfit += order.khakhra_items.reduce((sum, item) => {
       const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
@@ -510,6 +550,8 @@ export const calculateOrderProfit = (
 
       // Skip Chikki items - they are calculated separately from order fields
       if (khakhraType.category === "chikki") return sum
+      // Sejwan items are summed into patraProfit below
+      if (khakhraType.category === "sejwan") return sum
 
       // Check if this is a packet-based item
       if (item.is_packet_item && item.packet_quantity && item.price_per_packet) {
@@ -523,11 +565,25 @@ export const calculateOrderProfit = (
     }, 0)
   }
 
-  // Add patra profit with dynamic calculation
+  // Original Patra profit (order-level: wants_patra, patra_packets, patra_price_per_packet)
   if (order.wants_patra) {
     const patraPrice = order.patra_price_per_packet || PATRA_PRICE_MIN
     const profitPerPacket = calculatePatraProfit(patraPrice)
     patraProfit += order.patra_packets * profitPerPacket
+  }
+
+  // Sejwan Spring Viti profit (from khakhra_items, category "sejwan")
+  const sejwanItems = order.khakhra_items?.filter(
+    (item) => KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)?.category === "sejwan",
+  )
+  if (sejwanItems && sejwanItems.length > 0) {
+    patraProfit += sejwanItems.reduce((sum, item) => {
+      const sejwanType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type && k.category === "sejwan")
+      if (!sejwanType || !item.is_packet_item || item.packet_quantity == null || item.price_per_packet == null)
+        return sum
+      const profitPerPacket = calculateDynamicProfit(sejwanType, item.price_per_packet, true)
+      return sum + item.packet_quantity * profitPerPacket
+    }, 0)
   }
 
   // Add fulvadi profit with dynamic calculation
@@ -566,8 +622,9 @@ export const getKhakhraTypesByCategory = () => {
   const bhakarwadi = KHAKHRA_TYPES.filter((k) => k.category === "bhakarwadi")
   const fulvadi = KHAKHRA_TYPES.filter((k) => k.category === "fulvadi")
   const chikki = KHAKHRA_TYPES.filter((k) => k.category === "chikki")
+  const sejwan = KHAKHRA_TYPES.filter((k) => k.category === "sejwan")
 
-  return { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki }
+  return { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki, sejwan }
 }
 
 // Helper function to calculate packet equivalent
@@ -600,10 +657,13 @@ export const calculateOrderTotalAmount = (order: Order): number => {
     }, 0)
   }
 
+  // Original Patra (order-level)
   if (order.wants_patra) {
     const pricePerPacket = order.patra_price_per_packet || PATRA_PRICE_MIN
     total += order.patra_packets * pricePerPacket
   }
+
+  // Sejwan is already included in khakhra_items reduce above
 
   if (order.wants_fulvadi && order.fulvadi_packets) {
     const pricePerPacket = order.fulvadi_price_per_packet || FULVADI_PACKET_PRICE

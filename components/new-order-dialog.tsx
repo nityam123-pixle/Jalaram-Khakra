@@ -14,6 +14,10 @@ import {
   KHAKHRA_TYPES,
   PATRA_PRICE_MIN,
   PATRA_PRICE_MAX,
+  PATRA_1KG_PRICE_MIN,
+  PATRA_1KG_PRICE_MAX,
+  PATRA_200G_PRICE_MIN,
+  PATRA_200G_PRICE_MAX,
   CHIKKI_PRICE_MIN,
   CHIKKI_PRICE_MAX,
   CHIKKI_MRP,
@@ -52,6 +56,10 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const [wantsPatra, setWantsPatra] = useState(false)
   const [patraPackets, setPatraPackets] = useState(0)
   const [patraPrice, setPatraPrice] = useState(PATRA_PRICE_MIN)
+  const [wantsSejwan, setWantsSejwan] = useState(false)
+  const [sejwanItems, setSejwanItems] = useState<
+    { type: string; packetQuantity: number; packetPrice: number }[]
+  >([])
   const [wantsChikki, setWantsChikki] = useState(false)
   const [chikkiPackets, setChikkiPackets] = useState(0)
   const [chikkiPrice, setChikkiPrice] = useState(CHIKKI_PRICE_MIN)
@@ -198,6 +206,39 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     })
   }
 
+  const addSejwanItem = () => {
+    setSejwanItems((prev) => [
+      ...prev,
+      { type: "", packetQuantity: 0, packetPrice: PATRA_1KG_PRICE_MIN },
+    ])
+  }
+
+  const removeSejwanItem = (index: number) => {
+    setSejwanItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updateSejwanItem = (index: number, field: string, value: string | number) => {
+    setSejwanItems((prev) => {
+      const updated = [...prev]
+      const currentItem = { ...updated[index] }
+      if (field === "type") {
+        const sejwanType = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "sejwan")
+        currentItem.type = value as string
+        currentItem.packetPrice = sejwanType?.basePacketPrice ?? PATRA_1KG_PRICE_MIN
+        currentItem.packetQuantity = 0
+      } else {
+        ;(currentItem as any)[field] = value
+      }
+      updated[index] = currentItem
+      return updated
+    })
+  }
+
+  const calculateSejwanItemTotal = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
+    if (!item.type) return 0
+    return (item.packetQuantity || 0) * (item.packetPrice || 0)
+  }
+
   const calculateItemTotal = (item: KhakhraItem) => {
     if (!item.type) return 0
 
@@ -241,8 +282,9 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     }, 0)
 
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
+    const sejwanTotal = sejwanItems.reduce((sum, item) => sum + calculateSejwanItemTotal(item), 0)
     const chikkiTotal = wantsChikki ? chikkiPackets * (chikkiPrice || CHIKKI_PRICE_MIN) : 0
-    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + chikkiTotal
+    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + sejwanTotal + chikkiTotal
   }
 
   const resetForm = () => {
@@ -253,6 +295,8 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     setWantsPatra(false)
     setPatraPackets(0)
     setPatraPrice(PATRA_PRICE_MIN)
+    setWantsSejwan(false)
+    setSejwanItems([])
     setWantsChikki(false)
     setChikkiPackets(0)
     setChikkiPrice(CHIKKI_PRICE_MIN)
@@ -294,16 +338,19 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
           (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
       )
 
+      const validSejwanItems = sejwanItems.filter((item) => item.type && (item.packetQuantity ?? 0) > 0)
+
       if (
         validKhakhraItems.length === 0 &&
         validBhakarwadiItems.length === 0 &&
         validFulvadiItems.length === 0 &&
         !wantsPatra &&
+        validSejwanItems.length === 0 &&
         !wantsChikki
       ) {
         toast({
           title: "Error",
-          description: "Please add at least one item or select Patra/Chikki",
+          description: "Please add at least one item or select Patra/Sejwan/Chikki",
           variant: "destructive",
         })
         return
@@ -313,6 +360,15 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         toast({
           title: "Error",
           description: "Please specify the number of Patra packets",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (wantsSejwan && validSejwanItems.length === 0) {
+        toast({
+          title: "Error",
+          description: "Please add at least one Sejwan Spring Viti item with quantity",
           variant: "destructive",
         })
         return
@@ -348,6 +404,11 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
           } else {
             return sum + item.quantity
           }
+        }, 0) +
+        validSejwanItems.reduce((sum, item) => {
+          const sejwanType = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "sejwan")
+          const weight = (sejwanType as any)?.packetWeight ?? 0.2
+          return sum + (item.packetQuantity || 0) * weight
         }, 0)
 
       const totalAmount = calculateTotal()
@@ -374,7 +435,12 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
 
       if (orderError) throw orderError
 
-      if (validKhakhraItems.length > 0 || validBhakarwadiItems.length > 0 || validFulvadiItems.length > 0) {
+      if (
+        validKhakhraItems.length > 0 ||
+        validBhakarwadiItems.length > 0 ||
+        validFulvadiItems.length > 0 ||
+        validSejwanItems.length > 0
+      ) {
         const allItemsToInsert = [
           ...validKhakhraItems.map((item) => {
             const baseItem = {
@@ -460,6 +526,20 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
               }
             }
           }),
+          ...validSejwanItems.map((item) => {
+            const sejwanType = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "sejwan")
+            const packetWeight = (sejwanType as any)?.packetWeight ?? 0.2
+            return {
+              order_id: order.id,
+              khakhra_type: item.type,
+              quantity_kg: (item.packetQuantity || 0) * packetWeight,
+              total_price: (item.packetQuantity || 0) * (item.packetPrice || 0),
+              is_packet_item: true,
+              packet_quantity: item.packetQuantity || 0,
+              price_per_packet: item.packetPrice || 0,
+              price_per_kg: 0,
+            }
+          }),
         ]
 
         const { error: itemsError } = await supabase.from("khakhra_items").insert(allItemsToInsert)
@@ -536,7 +616,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
             </div>
           </div>
 
-          {/* Patra Option */}
+          {/* Original Patra Option */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Patra Option</h3>
             <div className="flex items-center space-x-2">
@@ -585,6 +665,121 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                     ₹{patraPackets * patraPrice}
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sejwan Spring Viti (new snack category) */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Sejwan Spring Viti (Snack)</h3>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="wantsSejwan"
+                checked={wantsSejwan}
+                onCheckedChange={(checked) => {
+                  setWantsSejwan(checked)
+                  if (checked && sejwanItems.length === 0) {
+                    setSejwanItems([{ type: "", packetQuantity: 0, packetPrice: PATRA_1KG_PRICE_MIN }])
+                  }
+                }}
+              />
+              <Label htmlFor="wantsSejwan">
+                Customer wants Sejwan Spring Viti (1kg ₹{PATRA_1KG_PRICE_MIN}-{PATRA_1KG_PRICE_MAX}, 200g ₹{PATRA_200G_PRICE_MIN}-{PATRA_200G_PRICE_MAX})
+              </Label>
+            </div>
+            {wantsSejwan && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Add Sejwan Spring Viti 1kg or 200g packs</p>
+                  <Button type="button" onClick={addSejwanItem} size="sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Sejwan
+                  </Button>
+                </div>
+                {sejwanItems.map((item, index) => {
+                  const sejwanTypes = KHAKHRA_TYPES.filter((t) => t.category === "sejwan")
+                  const selectedSejwan = sejwanTypes.find((t) => t.name === item.type)
+                  const priceRange = selectedSejwan ? getPriceRange(selectedSejwan, true) : []
+
+                  return (
+                    <div
+                      key={index}
+                      className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 p-3 border rounded-lg items-end"
+                    >
+                      <div className="space-y-2">
+                        <Label>Pack type</Label>
+                        <Select
+                          value={item.type}
+                          onValueChange={(value) => updateSejwanItem(index, "type", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select pack" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sejwanTypes.map((type) => (
+                              <SelectItem key={type.name} value={type.name}>
+                                {type.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {selectedSejwan && (
+                        <div className="space-y-2">
+                          <Label>Price per pack</Label>
+                          <Select
+                            value={item.packetPrice?.toString() ?? ""}
+                            onValueChange={(value) => updateSejwanItem(index, "packetPrice", Number.parseInt(value))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {priceRange.map((price) => (
+                                <SelectItem key={price} value={price.toString()}>
+                                  ₹{price}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <Label>Quantity</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={item.packetQuantity || 0}
+                          onChange={(e) =>
+                            updateSejwanItem(index, "packetQuantity", Number.parseInt(e.target.value) || 0)
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Total</Label>
+                        <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
+                          ₹{calculateSejwanItemTotal(item)}
+                        </div>
+                      </div>
+
+                      {sejwanItems.length >= 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeSejwanItem(index)}
+                          className="col-span-full sm:col-span-1"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -889,7 +1084,12 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                         <SelectValue placeholder="Select khakhra type (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        {KHAKHRA_TYPES.filter((type) => type.category !== "bhakarwadi").map((type) => (
+                        {KHAKHRA_TYPES.filter(
+                          (type) =>
+                            type.category !== "bhakarwadi" &&
+                            type.category !== "fulvadi" &&
+                            type.category !== "sejwan",
+                        ).map((type) => (
                           <SelectItem key={type.name} value={type.name}>
                             {type.name} - ₹{type.basePrice}
                             {type.maxPrice > type.basePrice ? `-${type.maxPrice}` : ""}/kg
