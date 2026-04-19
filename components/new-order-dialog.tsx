@@ -912,7 +912,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
             {wantsMathiya && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">Nani or Moti — set selling price per packet</p>
+                  <p className="text-sm text-muted-foreground">Mini or Moti — set selling price per packet</p>
                   <Button type="button" onClick={addMathiyaItem} size="sm">
                     <Plus className="h-4 w-4 mr-1" />
                     Add line

@@ -369,11 +369,11 @@ export const KHAKHRA_TYPES = [
 
   // Mathiya Puri — 200gm packets
   {
-    name: "Mathiya Puri Nani",
+    name: "Mathiya Puri Mini",
     category: "mathiyaPuri" as const,
     sellBy: "packet" as const,
     mrp: 80,
-    basePacketPrice: 42,
+    basePacketPrice: 40,
     maxPacketPrice: 50,
     basePacketCost: 37.7,
     basePacketProfit: 4.3,
@@ -384,7 +384,7 @@ export const KHAKHRA_TYPES = [
     category: "mathiyaPuri" as const,
     sellBy: "packet" as const,
     mrp: 90,
-    basePacketPrice: 45,
+    basePacketPrice: 42,
     maxPacketPrice: 50,
     basePacketCost: 39,
     basePacketProfit: 6,

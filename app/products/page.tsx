@@ -256,9 +256,9 @@ export default function ProductsPage() {
                   const minP = type.basePacketPrice
                   const maxP = type.maxPacketPrice
                   const profitRangeLabel =
-                    type.name === "Mathiya Puri Nani"
-                      ? "₹4.30 – ₹12.30 per packet"
-                      : "₹6 – ₹11 per packet"
+                    type.name === "Mathiya Puri Mini"
+                      ? "₹2.30 – ₹12.30 per packet"
+                      : "₹3 – ₹11 per packet"
 
                   return (
                     <div key={type.name} className="rounded-lg border p-2">
@@ -471,9 +471,9 @@ export default function ProductsPage() {
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
                 <h4 className="font-semibold mb-2">Mathiya Puri</h4>
                 <ul className="space-y-1 text-muted-foreground">
-                  <li>• Nani: MRP ₹80, cost ₹37.70, sell ₹42–₹50</li>
-                  <li>• Moti: MRP ₹90, cost ₹39, sell ₹45–₹50</li>
-                  <li>• Profit: ₹4.30–₹12.30 (Nani), ₹6–₹11 (Moti) per packet</li>
+                  <li>• Mini: MRP ₹80, cost ₹37.70, sell ₹40–₹50</li>
+                  <li>• Moti: MRP ₹90, cost ₹39, sell ₹42–₹50</li>
+                  <li>• Profit: ₹2.30–₹12.30 (Mini), ₹3–₹11 (Moti) per packet</li>
                 </ul>
               </div>
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">

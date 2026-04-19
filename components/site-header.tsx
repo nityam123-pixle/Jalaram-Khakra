@@ -34,9 +34,9 @@ export function SiteHeader() {
         <div className="flex items-center gap-1">
           <NewOrderDialog
             trigger={
-              <Button size="sm" variant="outline" className="hidden gap-1.5 sm:inline-flex">
+              <Button size="sm" variant="outline" className="gap-1.5">
                 <Plus className="h-4 w-4" />
-                New order
+                <span className="hidden sm:inline">New order</span>
               </Button>
             }
           />
