@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { CustomerSearchInput } from "@/components/customer-search-input"
+import { addCustomer, findCustomerByShopAndCity } from "@/lib/customers"
 import {
   CITIES,
   KHAKHRA_TYPES,
@@ -29,6 +31,7 @@ import {
 import { Plus, X, IndianRupee } from "lucide-react"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { getSupabaseErrorMessage } from "@/lib/utils"
 
 interface KhakhraItem {
   type: string
@@ -42,7 +45,7 @@ interface KhakhraItem {
 
 interface NewOrderDialogProps {
   trigger: React.ReactNode
-  onOrderCreated: () => void
+  onOrderCreated?: () => void
 }
 
 export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps) {
@@ -58,6 +61,10 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const [patraPrice, setPatraPrice] = useState(PATRA_PRICE_MIN)
   const [wantsSejwan, setWantsSejwan] = useState(false)
   const [sejwanItems, setSejwanItems] = useState<
+    { type: string; packetQuantity: number; packetPrice: number }[]
+  >([])
+  const [wantsMathiya, setWantsMathiya] = useState(false)
+  const [mathiyaItems, setMathiyaItems] = useState<
     { type: string; packetQuantity: number; packetPrice: number }[]
   >([])
   const [wantsChikki, setWantsChikki] = useState(false)
@@ -239,6 +246,46 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     return (item.packetQuantity || 0) * (item.packetPrice || 0)
   }
 
+  const addMathiyaItem = () => {
+    setMathiyaItems((prev) => [
+      ...prev,
+      { type: "", packetQuantity: 0, packetPrice: 42 },
+    ])
+  }
+
+  const removeMathiyaItem = (index: number) => {
+    setMathiyaItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updateMathiyaItem = (index: number, field: string, value: string | number) => {
+    setMathiyaItems((prev) => {
+      const updated = [...prev]
+      const currentItem = { ...updated[index] }
+      if (field === "type") {
+        const mt = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "mathiyaPuri")
+        currentItem.type = value as string
+        currentItem.packetPrice = mt?.basePacketPrice ?? 42
+        currentItem.packetQuantity = 0
+      } else {
+        ;(currentItem as any)[field] = value
+      }
+      updated[index] = currentItem
+      return updated
+    })
+  }
+
+  const calculateMathiyaItemTotal = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
+    if (!item.type) return 0
+    return (item.packetQuantity || 0) * (item.packetPrice || 0)
+  }
+
+  const mathiyaProfitPreview = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
+    const mt = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "mathiyaPuri")
+    if (!mt || !item.packetQuantity) return 0
+    const cost = mt.basePacketCost ?? 0
+    return (item.packetPrice - cost) * item.packetQuantity
+  }
+
   const calculateItemTotal = (item: KhakhraItem) => {
     if (!item.type) return 0
 
@@ -283,8 +330,9 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
 
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
     const sejwanTotal = sejwanItems.reduce((sum, item) => sum + calculateSejwanItemTotal(item), 0)
+    const mathiyaTotal = mathiyaItems.reduce((sum, item) => sum + calculateMathiyaItemTotal(item), 0)
     const chikkiTotal = wantsChikki ? chikkiPackets * (chikkiPrice || CHIKKI_PRICE_MIN) : 0
-    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + sejwanTotal + chikkiTotal
+    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + sejwanTotal + mathiyaTotal + chikkiTotal
   }
 
   const resetForm = () => {
@@ -297,6 +345,8 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
     setPatraPrice(PATRA_PRICE_MIN)
     setWantsSejwan(false)
     setSejwanItems([])
+    setWantsMathiya(false)
+    setMathiyaItems([])
     setWantsChikki(false)
     setChikkiPackets(0)
     setChikkiPrice(CHIKKI_PRICE_MIN)
@@ -339,6 +389,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
       )
 
       const validSejwanItems = sejwanItems.filter((item) => item.type && (item.packetQuantity ?? 0) > 0)
+      const validMathiyaItems = mathiyaItems.filter((item) => item.type && (item.packetQuantity ?? 0) > 0)
 
       if (
         validKhakhraItems.length === 0 &&
@@ -346,11 +397,12 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         validFulvadiItems.length === 0 &&
         !wantsPatra &&
         validSejwanItems.length === 0 &&
+        validMathiyaItems.length === 0 &&
         !wantsChikki
       ) {
         toast({
           title: "Error",
-          description: "Please add at least one item or select Patra/Sejwan/Chikki",
+          description: "Please add at least one item or select Patra/Sejwan/Mathiya/Chikki",
           variant: "destructive",
         })
         return
@@ -369,6 +421,15 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         toast({
           title: "Error",
           description: "Please add at least one Sejwan Spring Viti item with quantity",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (wantsMathiya && validMathiyaItems.length === 0) {
+        toast({
+          title: "Error",
+          description: "Please add at least one Mathiya Puri item with quantity",
           variant: "destructive",
         })
         return
@@ -409,20 +470,28 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
           const sejwanType = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "sejwan")
           const weight = (sejwanType as any)?.packetWeight ?? 0.2
           return sum + (item.packetQuantity || 0) * weight
+        }, 0) +
+        validMathiyaItems.reduce((sum, item) => {
+          return sum + (item.packetQuantity || 0) * 0.2
         }, 0)
 
       const totalAmount = calculateTotal()
-      const totalBhakarwadiPackets = validBhakarwadiItems
-        .filter((item) => item.sellBy === "packet")
-        .reduce((sum, item) => sum + (item.packetQuantity || 0), 0)
 
-      const insertData: any = {
+      const totalFulvadiPackets = validFulvadiItems.reduce(
+        (sum, item) => sum + (item.packetQuantity || 0),
+        0,
+      )
+
+      const insertData: Record<string, unknown> = {
         shop_name: shopName,
         address,
         city,
         wants_patra: wantsPatra,
         patra_packets: wantsPatra ? patraPackets : 0,
         patra_price_per_packet: patraPrice || PATRA_PRICE_MIN,
+        wants_fulvadi: wantsFulvadi,
+        fulvadi_packets: wantsFulvadi ? totalFulvadiPackets : 0,
+        fulvadi_price_per_packet: 90,
         wants_chikki: wantsChikki,
         chikki_packets: wantsChikki ? chikkiPackets : 0,
         chikki_price_per_packet: chikkiPrice || CHIKKI_PRICE_MIN,
@@ -431,15 +500,23 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         status: "pending",
       }
 
-      const { data: order, error: orderError } = await supabase.from("orders").insert(insertData).select().single()
+      const { data: insertedRows, error: orderError } = await supabase.from("orders").insert(insertData).select()
 
       if (orderError) throw orderError
+
+      const order = insertedRows?.[0] as { id: string } | undefined
+      if (!order?.id) {
+        throw new Error(
+          "Order was saved but not returned. Add a Supabase policy allowing SELECT on `orders` for the same role that inserts (RLS often blocks read-after-insert).",
+        )
+      }
 
       if (
         validKhakhraItems.length > 0 ||
         validBhakarwadiItems.length > 0 ||
         validFulvadiItems.length > 0 ||
-        validSejwanItems.length > 0
+        validSejwanItems.length > 0 ||
+        validMathiyaItems.length > 0
       ) {
         const allItemsToInsert = [
           ...validKhakhraItems.map((item) => {
@@ -540,11 +617,35 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
               price_per_kg: 0,
             }
           }),
+          ...validMathiyaItems.map((item) => ({
+            order_id: order.id,
+            khakhra_type: item.type,
+            quantity_kg: (item.packetQuantity || 0) * 0.2,
+            total_price: (item.packetQuantity || 0) * (item.packetPrice || 0),
+            is_packet_item: true,
+            packet_quantity: item.packetQuantity || 0,
+            price_per_packet: item.packetPrice || 0,
+            price_per_kg: 0,
+          })),
         ]
 
         const { error: itemsError } = await supabase.from("khakhra_items").insert(allItemsToInsert)
 
         if (itemsError) throw itemsError
+      }
+
+      try {
+        const existing = await findCustomerByShopAndCity(shopName, city)
+        if (!existing) {
+          await addCustomer({
+            shop_name: shopName,
+            city,
+            address: address || null,
+            phone: null,
+          })
+        }
+      } catch (e) {
+        console.error("Customer directory sync skipped:", e)
       }
 
       toast({
@@ -553,12 +654,16 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
       })
       resetForm()
       setOpen(false)
-      onOrderCreated()
+      onOrderCreated?.()
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("orders:refresh"))
+      }
     } catch (error) {
-      console.error("Error creating order:", error)
+      const msg = getSupabaseErrorMessage(error)
+      console.error("Error creating order:", msg, error)
       toast({
         title: "Error",
-        description: "Failed to create order. Please try again.",
+        description: msg,
         variant: "destructive",
       })
     } finally {
@@ -580,12 +685,16 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="shopName">Shop Name *</Label>
-                <Input
+                <CustomerSearchInput
                   id="shopName"
                   value={shopName}
-                  onChange={(e) => setShopName(e.target.value)}
+                  onChange={setShopName}
+                  onCustomerSelect={(customer) => {
+                    setShopName(customer.shop_name)
+                    setCity(customer.city)
+                    setAddress(customer.address ?? "")
+                  }}
                   placeholder="Enter shop name"
-                  required
                 />
               </div>
               <div className="space-y-2">
@@ -773,6 +882,116 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                           size="sm"
                           onClick={() => removeSejwanItem(index)}
                           className="col-span-full sm:col-span-1"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Mathiya Puri */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Mathiya Puri</h3>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="wantsMathiya"
+                checked={wantsMathiya}
+                onCheckedChange={(checked) => {
+                  setWantsMathiya(checked)
+                  if (checked && mathiyaItems.length === 0) {
+                    setMathiyaItems([{ type: "", packetQuantity: 0, packetPrice: 42 }])
+                  }
+                }}
+              />
+              <Label htmlFor="wantsMathiya">Customer wants Mathiya Puri (200gm packets)</Label>
+            </div>
+            {wantsMathiya && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Nani or Moti — set selling price per packet</p>
+                  <Button type="button" onClick={addMathiyaItem} size="sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add line
+                  </Button>
+                </div>
+                {mathiyaItems.map((item, index) => {
+                  const mathiyaTypes = KHAKHRA_TYPES.filter((t) => t.category === "mathiyaPuri")
+                  const selected = mathiyaTypes.find((t) => t.name === item.type)
+                  const mrp = selected && "mrp" in selected ? (selected as { mrp: number }).mrp : undefined
+                  const cost = selected?.basePacketCost
+
+                  return (
+                    <div
+                      key={index}
+                      className="grid grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-2 md:grid-cols-6 md:items-end"
+                    >
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Product</Label>
+                        <Select value={item.type} onValueChange={(value) => updateMathiyaItem(index, "type", value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select variety" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mathiyaTypes.map((type) => (
+                              <SelectItem key={type.name} value={type.name}>
+                                {type.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Packets</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.packetQuantity || 0}
+                          onChange={(e) =>
+                            updateMathiyaItem(index, "packetQuantity", Number.parseInt(e.target.value) || 0)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Price / packet (₹)</Label>
+                        <Input
+                          type="number"
+                          min={selected?.basePacketPrice ?? 42}
+                          max={selected?.maxPacketPrice ?? 50}
+                          step={1}
+                          value={item.packetPrice || ""}
+                          onChange={(e) =>
+                            updateMathiyaItem(index, "packetPrice", Number.parseFloat(e.target.value) || 0)
+                          }
+                        />
+                        {selected && mrp != null && cost != null && (
+                          <p className="text-xs text-muted-foreground">
+                            MRP: ₹{mrp.toLocaleString("en-IN")} | Our cost: ₹{cost.toLocaleString("en-IN")}
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Line total</Label>
+                        <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm">
+                          ₹{calculateMathiyaItemTotal(item).toLocaleString("en-IN")}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Est. profit</Label>
+                        <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
+                          ₹{mathiyaProfitPreview(item).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      {mathiyaItems.length >= 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="md:col-span-6"
+                          onClick={() => removeMathiyaItem(index)}
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -1088,7 +1307,8 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                           (type) =>
                             type.category !== "bhakarwadi" &&
                             type.category !== "fulvadi" &&
-                            type.category !== "sejwan",
+                            type.category !== "sejwan" &&
+                            type.category !== "mathiyaPuri",
                         ).map((type) => (
                           <SelectItem key={type.name} value={type.name}>
                             {type.name} - ₹{type.basePrice}

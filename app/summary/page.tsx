@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { supabase, calculateOrderProfit, type Order } from "@/lib/supabase"
+import { supabase, calculateOrderProfit, KHAKHRA_TYPES, type Order } from "@/lib/supabase"
 import { IndianRupee, TrendingUp, Calendar, ShoppingCart, MapPin } from "lucide-react"
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from "date-fns"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -17,13 +17,17 @@ interface SummaryStats {
   totalKhakhraKg: number
   totalPatraPackets: number
   totalBhakarwadiKg: number
-  totalFulvadiPackets: number
+  totalChikkiPackets: number
   pendingOrders: number
   completedOrders: number
   khakhraProfit: number
-  patraProfit: number
   bhakarwadiProfit: number
+  bhakriProfit: number
+  faraliProfit: number
+  mathiyaPuriProfit: number
+  patraProfit: number
   fulvadiProfit: number
+  chikkiProfit: number
 }
 
 interface MonthlyStats extends SummaryStats {
@@ -39,13 +43,17 @@ export default function SummaryPage() {
     totalKhakhraKg: 0,
     totalPatraPackets: 0,
     totalBhakarwadiKg: 0,
-    totalFulvadiPackets: 0,
+    totalChikkiPackets: 0,
     pendingOrders: 0,
     completedOrders: 0,
     khakhraProfit: 0,
-    patraProfit: 0,
     bhakarwadiProfit: 0,
+    bhakriProfit: 0,
+    faraliProfit: 0,
+    mathiyaPuriProfit: 0,
+    patraProfit: 0,
     fulvadiProfit: 0,
+    chikkiProfit: 0,
   })
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([])
   const [orders, setOrders] = useState<Order[]>([])
@@ -68,29 +76,24 @@ export default function SummaryPage() {
       // Calculate overall stats
       const totalStats = ordersWithItems.reduce(
         (acc, order) => {
-          const { khakhraProfit, patraProfit, totalProfit } = calculateOrderProfit(order)
+          const { khakhraProfit, bhakarwadiProfit, bhakriProfit, faraliProfit, mathiyaPuriProfit, patraProfit, fulvadiProfit, chikkiProfit, totalProfit } = calculateOrderProfit(order)
 
-          // Calculate Bhakarwadi and Fulvadi specific metrics
+          // Calculate specific metrics for display
           let bhakarwadiKg = 0
-          let bhakarwadiProfit = 0
-          let fulvadiPackets = 0
-          let fulvadiProfit = 0
+          let chikkiPackets = 0
 
           if (order.khakhra_items) {
             order.khakhra_items.forEach((item) => {
-              const itemType = item.khakhra_type.toLowerCase()
-              if (itemType.includes("bhakarwadi")) {
+              const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
+              if (khakhraType?.category === "bhakarwadi") {
                 if (item.is_packet_item) {
                   bhakarwadiKg += (item.packet_quantity || 0) * 0.2
-                  bhakarwadiProfit += (item.packet_quantity || 0) * 33 // Fixed profit per packet
                 } else {
                   bhakarwadiKg += item.quantity_kg
-                  bhakarwadiProfit += item.quantity_kg * 25 // Base profit per kg
                 }
-              } else if (itemType.includes("fulvadi")) {
+              } else if (khakhraType?.category === "chikki") {
                 if (item.is_packet_item) {
-                  fulvadiPackets += item.packet_quantity || 0
-                  fulvadiProfit += (item.packet_quantity || 0) * 10 // Fixed ₹10 profit per packet
+                  chikkiPackets += item.packet_quantity || 0
                 }
               }
             })
@@ -103,13 +106,17 @@ export default function SummaryPage() {
             totalKhakhraKg: acc.totalKhakhraKg + order.total_khakhra_kg,
             totalPatraPackets: acc.totalPatraPackets + order.patra_packets,
             totalBhakarwadiKg: acc.totalBhakarwadiKg + bhakarwadiKg,
-            totalFulvadiPackets: acc.totalFulvadiPackets + fulvadiPackets,
+            totalChikkiPackets: acc.totalChikkiPackets + chikkiPackets + (order.chikki_packets || 0),
             pendingOrders: acc.pendingOrders + (order.status === "pending" ? 1 : 0),
             completedOrders: acc.completedOrders + (order.status === "completed" ? 1 : 0),
             khakhraProfit: acc.khakhraProfit + khakhraProfit,
-            patraProfit: acc.patraProfit + patraProfit,
             bhakarwadiProfit: acc.bhakarwadiProfit + bhakarwadiProfit,
+            bhakriProfit: acc.bhakriProfit + bhakriProfit,
+            faraliProfit: acc.faraliProfit + faraliProfit,
+            mathiyaPuriProfit: acc.mathiyaPuriProfit + mathiyaPuriProfit,
+            patraProfit: acc.patraProfit + patraProfit,
             fulvadiProfit: acc.fulvadiProfit + fulvadiProfit,
+            chikkiProfit: acc.chikkiProfit + chikkiProfit,
           }
         },
         {
@@ -119,13 +126,17 @@ export default function SummaryPage() {
           totalKhakhraKg: 0,
           totalPatraPackets: 0,
           totalBhakarwadiKg: 0,
-          totalFulvadiPackets: 0,
+          totalChikkiPackets: 0,
           pendingOrders: 0,
           completedOrders: 0,
           khakhraProfit: 0,
-          patraProfit: 0,
           bhakarwadiProfit: 0,
+          bhakriProfit: 0,
+          faraliProfit: 0,
+          mathiyaPuriProfit: 0,
+          patraProfit: 0,
           fulvadiProfit: 0,
+          chikkiProfit: 0,
         },
       )
 
@@ -148,28 +159,23 @@ export default function SummaryPage() {
 
         const monthStats = monthOrders.reduce(
           (acc, order) => {
-            const { khakhraProfit, patraProfit, totalProfit } = calculateOrderProfit(order)
+            const { khakhraProfit, bhakarwadiProfit, bhakriProfit, faraliProfit, mathiyaPuriProfit, patraProfit, fulvadiProfit, chikkiProfit, totalProfit } = calculateOrderProfit(order)
 
             let bhakarwadiKg = 0
-            let bhakarwadiProfit = 0
-            let fulvadiPackets = 0
-            let fulvadiProfit = 0
+            let chikkiPackets = 0
 
             if (order.khakhra_items) {
               order.khakhra_items.forEach((item) => {
-                const itemType = item.khakhra_type.toLowerCase()
-                if (itemType.includes("bhakarwadi")) {
+                const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
+                if (khakhraType?.category === "bhakarwadi") {
                   if (item.is_packet_item) {
                     bhakarwadiKg += (item.packet_quantity || 0) * 0.2
-                    bhakarwadiProfit += (item.packet_quantity || 0) * 33
                   } else {
                     bhakarwadiKg += item.quantity_kg
-                    bhakarwadiProfit += item.quantity_kg * 25
                   }
-                } else if (itemType.includes("fulvadi")) {
+                } else if (khakhraType?.category === "chikki") {
                   if (item.is_packet_item) {
-                    fulvadiPackets += item.packet_quantity || 0
-                    fulvadiProfit += (item.packet_quantity || 0) * 10
+                    chikkiPackets += item.packet_quantity || 0
                   }
                 }
               })
@@ -182,13 +188,17 @@ export default function SummaryPage() {
               totalKhakhraKg: acc.totalKhakhraKg + order.total_khakhra_kg,
               totalPatraPackets: acc.totalPatraPackets + order.patra_packets,
               totalBhakarwadiKg: acc.totalBhakarwadiKg + bhakarwadiKg,
-              totalFulvadiPackets: acc.totalFulvadiPackets + fulvadiPackets,
+              totalChikkiPackets: acc.totalChikkiPackets + chikkiPackets + (order.chikki_packets || 0),
               pendingOrders: acc.pendingOrders + (order.status === "pending" ? 1 : 0),
               completedOrders: acc.completedOrders + (order.status === "completed" ? 1 : 0),
               khakhraProfit: acc.khakhraProfit + khakhraProfit,
-              patraProfit: acc.patraProfit + patraProfit,
               bhakarwadiProfit: acc.bhakarwadiProfit + bhakarwadiProfit,
+              bhakriProfit: acc.bhakriProfit + bhakriProfit,
+              faraliProfit: acc.faraliProfit + faraliProfit,
+              mathiyaPuriProfit: acc.mathiyaPuriProfit + mathiyaPuriProfit,
+              patraProfit: acc.patraProfit + patraProfit,
               fulvadiProfit: acc.fulvadiProfit + fulvadiProfit,
+              chikkiProfit: acc.chikkiProfit + chikkiProfit,
             }
           },
           {
@@ -198,13 +208,17 @@ export default function SummaryPage() {
             totalKhakhraKg: 0,
             totalPatraPackets: 0,
             totalBhakarwadiKg: 0,
-            totalFulvadiPackets: 0,
+            totalChikkiPackets: 0,
             pendingOrders: 0,
             completedOrders: 0,
             khakhraProfit: 0,
-            patraProfit: 0,
             bhakarwadiProfit: 0,
+            bhakriProfit: 0,
+            faraliProfit: 0,
+            mathiyaPuriProfit: 0,
+            patraProfit: 0,
             fulvadiProfit: 0,
+            chikkiProfit: 0,
             month: format(month, "MMMM"),
             year: month.getFullYear(),
           },
@@ -290,7 +304,7 @@ export default function SummaryPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
+                <CardTitle className="text-sm font-medium">Overall Profit</CardTitle>
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -309,7 +323,7 @@ export default function SummaryPage() {
               <CardContent>
                 <div className="text-2xl font-bold">{stats.totalKhakhraKg.toFixed(1)} kg</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  + {stats.totalPatraPackets} Patra + {stats.totalFulvadiPackets} Fulvadi
+                  + {stats.totalPatraPackets} Patra + {stats.totalChikkiPackets} Chikki
                 </p>
               </CardContent>
             </Card>
@@ -339,8 +353,8 @@ export default function SummaryPage() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Fulvadi Packets</span>
-                  <span className="text-sm">{stats.totalFulvadiPackets} packets (500g each)</span>
+                  <span className="text-sm font-medium">Chikki Packets</span>
+                  <span className="text-sm">{stats.totalChikkiPackets} packets (200g each)</span>
                 </div>
               </CardContent>
             </Card>
@@ -357,11 +371,6 @@ export default function SummaryPage() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Patra Profit</span>
-                  <span className="text-sm font-semibold text-green-600">₹{stats.patraProfit.toLocaleString()}</span>
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Bhakarwadi Profit</span>
                   <span className="text-sm font-semibold text-green-600">
                     ₹{stats.bhakarwadiProfit.toLocaleString()}
@@ -369,12 +378,37 @@ export default function SummaryPage() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Bhakri Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.bhakriProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Farali Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.faraliProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Mathiya Puri Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.mathiyaPuriProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Patra Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.patraProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Fulvadi Profit</span>
                   <span className="text-sm font-semibold text-green-600">₹{stats.fulvadiProfit.toLocaleString()}</span>
                 </div>
                 <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Chikki Profit</span>
+                  <span className="text-sm font-semibold text-green-600">₹{stats.chikkiProfit.toLocaleString()}</span>
+                </div>
+                <Separator />
                 <div className="flex items-center justify-between font-semibold">
-                  <span className="text-sm">Total Profit</span>
+                  <span className="text-sm">Overall Profit</span>
                   <span className="text-sm text-green-600">₹{stats.totalProfit.toLocaleString()}</span>
                 </div>
               </CardContent>

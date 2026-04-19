@@ -1,101 +1,103 @@
-import { TrendingDownIcon, TrendingUpIcon } from "lucide-react"
+import { CheckCircle2, Clock, IndianRupee, ShoppingCart, TrendingDownIcon, TrendingUpIcon } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 
-export function SectionCards() {
+type Trend = { value: string; positive?: boolean; negative?: boolean; neutral?: boolean }
+
+export function SectionCards({
+  totalOrders,
+  pendingOrders,
+  completedOrders,
+  totalEarningsFormatted,
+}: {
+  totalOrders: number
+  pendingOrders: number
+  completedOrders: number
+  totalEarningsFormatted: string
+}) {
+  const cards: {
+    title: string
+    value: string
+    description: string
+    icon: typeof ShoppingCart
+    trend?: Trend
+  }[] = [
+    {
+      title: "Total Orders",
+      value: totalOrders.toLocaleString("en-IN"),
+      description: "All time orders",
+      icon: ShoppingCart,
+      trend: { value: "+12% from last month", positive: true },
+    },
+    {
+      title: "Pending Orders",
+      value: pendingOrders.toLocaleString("en-IN"),
+      description: "Awaiting completion",
+      icon: Clock,
+      trend: { value: "In queue", neutral: true },
+    },
+    {
+      title: "Completed Orders",
+      value: completedOrders.toLocaleString("en-IN"),
+      description: "Successfully delivered",
+      icon: CheckCircle2,
+      trend: { value: "+8% from last month", positive: true },
+    },
+    {
+      title: "Total Earnings ₹",
+      value: totalEarningsFormatted,
+      description: "Revenue generated",
+      icon: IndianRupee,
+      trend: { value: "+15% from last month", positive: true },
+    },
+  ]
+
   return (
-    <div className="*:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4 grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card lg:px-6">
-      <Card className="@container/card">
-        <CardHeader className="relative">
-          <CardDescription>Total Revenue</CardDescription>
-          <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-            $1,250.00
-          </CardTitle>
-          <div className="absolute right-4 top-4">
-            <Badge variant="outline" className="flex gap-1 rounded-lg text-xs">
-              <TrendingUpIcon className="size-3" />
-              +12.5%
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Trending up this month <TrendingUpIcon className="size-4" />
-          </div>
-          <div className="text-muted-foreground">
-            Visitors for the last 6 months
-          </div>
-        </CardFooter>
-      </Card>
-      <Card className="@container/card">
-        <CardHeader className="relative">
-          <CardDescription>New Customers</CardDescription>
-          <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-            1,234
-          </CardTitle>
-          <div className="absolute right-4 top-4">
-            <Badge variant="outline" className="flex gap-1 rounded-lg text-xs">
-              <TrendingDownIcon className="size-3" />
-              -20%
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Down 20% this period <TrendingDownIcon className="size-4" />
-          </div>
-          <div className="text-muted-foreground">
-            Acquisition needs attention
-          </div>
-        </CardFooter>
-      </Card>
-      <Card className="@container/card">
-        <CardHeader className="relative">
-          <CardDescription>Active Accounts</CardDescription>
-          <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-            45,678
-          </CardTitle>
-          <div className="absolute right-4 top-4">
-            <Badge variant="outline" className="flex gap-1 rounded-lg text-xs">
-              <TrendingUpIcon className="size-3" />
-              +12.5%
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Strong user retention <TrendingUpIcon className="size-4" />
-          </div>
-          <div className="text-muted-foreground">Engagement exceed targets</div>
-        </CardFooter>
-      </Card>
-      <Card className="@container/card">
-        <CardHeader className="relative">
-          <CardDescription>Growth Rate</CardDescription>
-          <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-            4.5%
-          </CardTitle>
-          <div className="absolute right-4 top-4">
-            <Badge variant="outline" className="flex gap-1 rounded-lg text-xs">
-              <TrendingUpIcon className="size-3" />
-              +4.5%
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Steady performance <TrendingUpIcon className="size-4" />
-          </div>
-          <div className="text-muted-foreground">Meets growth projections</div>
-        </CardFooter>
-      </Card>
+    <div className="grid grid-cols-1 gap-4 px-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4 lg:px-6">
+      {cards.map((card) => (
+        <Card
+          key={card.title}
+          className="stat-card @container/card rounded-xl border border-border bg-transparent shadow-none"
+          data-slot="card"
+        >
+          <CardHeader className="relative pb-2">
+            <CardDescription>{card.title}</CardDescription>
+            <CardTitle
+              className={cn(
+                "pr-14 font-mono text-3xl font-semibold tracking-tight tabular-nums @[250px]/card:text-3xl",
+              )}
+            >
+              {card.value}
+            </CardTitle>
+            <div className="absolute right-4 top-4 rounded-lg bg-muted p-2 text-muted-foreground">
+              <card.icon className="size-4" strokeWidth={1.5} />
+            </div>
+          </CardHeader>
+          <CardFooter className="flex-col items-start gap-1 border-0 pt-0 text-sm">
+            {card.trend && (
+              <span
+                className={cn(
+                  "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                  card.trend.positive &&
+                    "bg-green-500/10 text-green-600 dark:text-green-400",
+                  card.trend.negative && "bg-red-500/10 text-red-600 dark:text-red-400",
+                  card.trend.neutral && "bg-muted text-muted-foreground",
+                )}
+              >
+                {!card.trend.neutral &&
+                  (card.trend.positive ? (
+                    <TrendingUpIcon className="size-3" />
+                  ) : (
+                    <TrendingDownIcon className="size-3" />
+                  ))}
+                {card.trend.value}
+              </span>
+            )}
+            <div className="line-clamp-1 text-muted-foreground">{card.description}</div>
+          </CardFooter>
+        </Card>
+      ))}
     </div>
   )
 }

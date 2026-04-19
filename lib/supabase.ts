@@ -1,10 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = "https://gpynpjedcwbbpkyyuvga.supabase.co"
-const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdweW5wamVkY3diYnBreXl1dmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODYxMjIsImV4cCI6MjA2NjI2MjEyMn0.RwPy2ttONchySm3eaVgmhOsMd5eT1SKGOThRevDMJ2k"
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase-env"
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 export type Order = {
   id: string
@@ -368,6 +366,30 @@ export const KHAKHRA_TYPES = [
     basePacketProfit: 5, // 46 - 41
     packetWeight: 0.2, // 200g pack
   },
+
+  // Mathiya Puri — 200gm packets
+  {
+    name: "Mathiya Puri Nani",
+    category: "mathiyaPuri" as const,
+    sellBy: "packet" as const,
+    mrp: 80,
+    basePacketPrice: 42,
+    maxPacketPrice: 50,
+    basePacketCost: 37.7,
+    basePacketProfit: 4.3,
+    packetWeight: 0.2,
+  },
+  {
+    name: "Mathiya Puri Moti",
+    category: "mathiyaPuri" as const,
+    sellBy: "packet" as const,
+    mrp: 90,
+    basePacketPrice: 45,
+    maxPacketPrice: 50,
+    basePacketCost: 39,
+    basePacketProfit: 6,
+    packetWeight: 0.2,
+  },
 ]
 
 // Updated cities for your father's business coverage
@@ -441,10 +463,11 @@ export const calculateDynamicProfit = (
       khakhraType.category === "bhakarwadi" ||
       khakhraType.category === "fulvadi" ||
       khakhraType.category === "chikki" ||
-      khakhraType.category === "sejwan")
+      khakhraType.category === "sejwan" ||
+      khakhraType.category === "mathiyaPuri")
   ) {
     // For packet-based items: profit calculation
-    if (khakhraType.category === "sejwan") {
+    if (khakhraType.category === "sejwan" || khakhraType.category === "mathiyaPuri") {
       const cost = khakhraType.basePacketCost ?? 0
       return actualPrice - cost
     } else if (khakhraType.category === "bhakarwadi") {
@@ -475,9 +498,10 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
       khakhraType.category === "bhakarwadi" ||
       khakhraType.category === "fulvadi" ||
       khakhraType.category === "chikki" ||
-      khakhraType.category === "sejwan")
+      khakhraType.category === "sejwan" ||
+      khakhraType.category === "mathiyaPuri")
   ) {
-    if (khakhraType.category === "sejwan") {
+    if (khakhraType.category === "sejwan" || khakhraType.category === "mathiyaPuri") {
       const base = khakhraType.basePacketPrice ?? 0
       const max = khakhraType.maxPacketPrice ?? base
       return Array.from({ length: max - base + 1 }, (_, i) => base + i)
@@ -530,39 +554,62 @@ export const calculateOrderProfit = (
     order: Order,
   ): {
     khakhraProfit: number
+    bhakarwadiProfit: number
+    bhakriProfit: number
+    faraliProfit: number
+    mathiyaPuriProfit: number
     patraProfit: number
     fulvadiProfit: number
     chikkiProfit: number
     totalProfit: number
   } => {
   let khakhraProfit = 0
+  let bhakarwadiProfit = 0
+  let bhakriProfit = 0
+  let faraliProfit = 0
+  let mathiyaPuriProfit = 0
   let patraProfit = 0
   let fulvadiProfit = 0
   let chikkiProfit = 0
 
-  // Calculate khakhra profit with dynamic pricing
-  // Exclude Chikki (order fields) and Sejwan (summed into patraProfit below)
+  // Calculate profits by category
   if (order.khakhra_items) {
-    khakhraProfit += order.khakhra_items.reduce((sum, item) => {
+    order.khakhra_items.forEach((item) => {
       const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
 
-      if (!khakhraType) return sum
+      if (!khakhraType) return
 
-      // Skip Chikki items - they are calculated separately from order fields
-      if (khakhraType.category === "chikki") return sum
-      // Sejwan items are summed into patraProfit below
-      if (khakhraType.category === "sejwan") return sum
+      let profit = 0
 
       // Check if this is a packet-based item
       if (item.is_packet_item && item.packet_quantity && item.price_per_packet) {
         const packetProfit = calculateDynamicProfit(khakhraType, item.price_per_packet, true)
-        return sum + item.packet_quantity * packetProfit
+        profit = item.packet_quantity * packetProfit
       } else {
         // Regular kg-based calculation with dynamic pricing
         const kgProfit = calculateDynamicProfit(khakhraType, item.price_per_kg, false)
-        return sum + item.quantity_kg * kgProfit
+        profit = item.quantity_kg * kgProfit
       }
-    }, 0)
+
+      // Add to appropriate category
+      if (khakhraType.category === "regular" || khakhraType.category === "premium") {
+        khakhraProfit += profit
+      } else if (khakhraType.category === "bhakarwadi") {
+        bhakarwadiProfit += profit
+      } else if (khakhraType.category === "bhakri") {
+        bhakriProfit += profit
+      } else if (khakhraType.category === "farali") {
+        faraliProfit += profit
+      } else if (khakhraType.category === "mathiyaPuri") {
+        mathiyaPuriProfit += profit
+      } else if (khakhraType.category === "sejwan") {
+        patraProfit += profit // Sejwan is treated as patra
+      } else if (khakhraType.category === "chikki") {
+        chikkiProfit += profit
+      } else if (khakhraType.category === "fulvadi") {
+        fulvadiProfit += profit
+      }
+    })
   }
 
   // Original Patra profit (order-level: wants_patra, patra_packets, patra_price_per_packet)
@@ -570,20 +617,6 @@ export const calculateOrderProfit = (
     const patraPrice = order.patra_price_per_packet || PATRA_PRICE_MIN
     const profitPerPacket = calculatePatraProfit(patraPrice)
     patraProfit += order.patra_packets * profitPerPacket
-  }
-
-  // Sejwan Spring Viti profit (from khakhra_items, category "sejwan")
-  const sejwanItems = order.khakhra_items?.filter(
-    (item) => KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)?.category === "sejwan",
-  )
-  if (sejwanItems && sejwanItems.length > 0) {
-    patraProfit += sejwanItems.reduce((sum, item) => {
-      const sejwanType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type && k.category === "sejwan")
-      if (!sejwanType || !item.is_packet_item || item.packet_quantity == null || item.price_per_packet == null)
-        return sum
-      const profitPerPacket = calculateDynamicProfit(sejwanType, item.price_per_packet, true)
-      return sum + item.packet_quantity * profitPerPacket
-    }, 0)
   }
 
   // Add fulvadi profit with dynamic calculation
@@ -606,10 +639,14 @@ export const calculateOrderProfit = (
 
   return {
     khakhraProfit,
+    bhakarwadiProfit,
+    bhakriProfit,
+    faraliProfit,
+    mathiyaPuriProfit,
     patraProfit,
     fulvadiProfit,
     chikkiProfit,
-    totalProfit: khakhraProfit + patraProfit + fulvadiProfit + chikkiProfit,
+    totalProfit: khakhraProfit + bhakarwadiProfit + bhakriProfit + faraliProfit + mathiyaPuriProfit + patraProfit + fulvadiProfit + chikkiProfit,
   }
 }
 
@@ -623,8 +660,9 @@ export const getKhakhraTypesByCategory = () => {
   const fulvadi = KHAKHRA_TYPES.filter((k) => k.category === "fulvadi")
   const chikki = KHAKHRA_TYPES.filter((k) => k.category === "chikki")
   const sejwan = KHAKHRA_TYPES.filter((k) => k.category === "sejwan")
+  const mathiyaPuri = KHAKHRA_TYPES.filter((k) => k.category === "mathiyaPuri")
 
-  return { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki, sejwan }
+  return { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki, sejwan, mathiyaPuri }
 }
 
 // Helper function to calculate packet equivalent

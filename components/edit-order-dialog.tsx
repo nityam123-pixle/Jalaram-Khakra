@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { CustomerSearchInput } from "@/components/customer-search-input"
 import {
   CITIES,
   KHAKHRA_TYPES,
@@ -69,6 +70,10 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
   const [sejwanItems, setSejwanItems] = useState<
     { type: string; packetQuantity: number; packetPrice: number }[]
   >([])
+  const [wantsMathiya, setWantsMathiya] = useState(false)
+  const [mathiyaItems, setMathiyaItems] = useState<
+    { type: string; packetQuantity: number; packetPrice: number }[]
+  >([])
   const [wantsBhakarwadi, setWantsBhakarwadi] = useState(false)
   const [bhakarwadiItems, setBhakarwadiItems] = useState<
     {
@@ -104,7 +109,8 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
           return (
             khakhraType?.category !== "bhakarwadi" &&
             khakhraType?.category !== "fulvadi" &&
-            khakhraType?.category !== "sejwan"
+            khakhraType?.category !== "sejwan" &&
+            khakhraType?.category !== "mathiyaPuri"
           )
         })
 
@@ -121,6 +127,11 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
         const sejwanItemsFromOrder = order.khakhra_items.filter((item) => {
           const khakhraType = KHAKHRA_TYPES.find((t) => t.name === item.khakhra_type)
           return khakhraType?.category === "sejwan"
+        })
+
+        const mathiyaItemsFromOrder = order.khakhra_items.filter((item) => {
+          const khakhraType = KHAKHRA_TYPES.find((t) => t.name === item.khakhra_type)
+          return khakhraType?.category === "mathiyaPuri"
         })
 
         setKhakhraItems(
@@ -173,12 +184,29 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
           setWantsSejwan(false)
           setSejwanItems([])
         }
+
+        if (mathiyaItemsFromOrder.length > 0) {
+          setWantsMathiya(true)
+          setMathiyaItems(
+            mathiyaItemsFromOrder.map((item) => ({
+              type: item.khakhra_type,
+              packetQuantity: item.packet_quantity || 0,
+              packetPrice: item.price_per_packet || 0,
+            })),
+          )
+        } else {
+          setWantsMathiya(false)
+          setMathiyaItems([])
+        }
       } else {
         setKhakhraItems([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
         setWantsBhakarwadi(false)
         setBhakarwadiItems([])
         setFulvadiItems([])
+        setWantsSejwan(false)
         setSejwanItems([])
+        setWantsMathiya(false)
+        setMathiyaItems([])
       }
     }
   }, [order])
@@ -346,6 +374,43 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
     return (item.packetQuantity || 0) * (item.packetPrice || 0)
   }
 
+  const addMathiyaItem = () => {
+    setMathiyaItems((prev) => [...prev, { type: "", packetQuantity: 0, packetPrice: 42 }])
+  }
+
+  const removeMathiyaItem = (index: number) => {
+    setMathiyaItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updateMathiyaItem = (index: number, field: string, value: string | number) => {
+    setMathiyaItems((prev) => {
+      const updated = [...prev]
+      const currentItem = { ...updated[index] }
+      if (field === "type") {
+        const mt = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "mathiyaPuri")
+        currentItem.type = value as string
+        currentItem.packetPrice = mt?.basePacketPrice ?? 42
+        currentItem.packetQuantity = 0
+      } else {
+        ;(currentItem as any)[field] = value
+      }
+      updated[index] = currentItem
+      return updated
+    })
+  }
+
+  const calculateMathiyaItemTotal = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
+    if (!item.type) return 0
+    return (item.packetQuantity || 0) * (item.packetPrice || 0)
+  }
+
+  const mathiyaProfitPreview = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
+    const mt = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "mathiyaPuri")
+    if (!mt || !item.packetQuantity) return 0
+    const cost = mt.basePacketCost ?? 0
+    return (item.packetPrice - cost) * item.packetQuantity
+  }
+
   const calculateItemTotal = (item: KhakhraItem) => {
     if (!item.type) return 0
 
@@ -392,7 +457,8 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
 
     const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
     const sejwanTotal = sejwanItems.reduce((sum, item) => sum + calculateSejwanItemTotal(item), 0)
-    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + sejwanTotal
+    const mathiyaTotal = mathiyaItems.reduce((sum, item) => sum + calculateMathiyaItemTotal(item), 0)
+    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + sejwanTotal + mathiyaTotal
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -430,17 +496,19 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
       )
 
       const validSejwanItems = sejwanItems.filter((item) => item.type && (item.packetQuantity ?? 0) > 0)
+      const validMathiyaItems = mathiyaItems.filter((item) => item.type && (item.packetQuantity ?? 0) > 0)
 
       if (
         validKhakhraItems.length === 0 &&
         validBhakarwadiItems.length === 0 &&
         validFulvadiItems.length === 0 &&
         !wantsPatra &&
-        validSejwanItems.length === 0
+        validSejwanItems.length === 0 &&
+        validMathiyaItems.length === 0
       ) {
         toast({
           title: "Error",
-          description: "Please add at least one item or Patra/Sejwan",
+          description: "Please add at least one item or Patra/Sejwan/Mathiya",
           variant: "destructive",
         })
         return
@@ -459,6 +527,15 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
         toast({
           title: "Error",
           description: "Please add at least one Sejwan Spring Viti item with quantity",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (wantsMathiya && validMathiyaItems.length === 0) {
+        toast({
+          title: "Error",
+          description: "Please add at least one Mathiya Puri item with quantity",
           variant: "destructive",
         })
         return
@@ -490,7 +567,8 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
           const sejwanType = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "sejwan")
           const weight = (sejwanType as any)?.packetWeight ?? 0.2
           return sum + (item.packetQuantity || 0) * weight
-        }, 0)
+        }, 0) +
+        validMathiyaItems.reduce((sum, item) => sum + (item.packetQuantity || 0) * 0.2, 0)
 
       const totalAmount = calculateTotal()
 
@@ -520,7 +598,8 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
         validKhakhraItems.length > 0 ||
         validBhakarwadiItems.length > 0 ||
         validFulvadiItems.length > 0 ||
-        validSejwanItems.length > 0
+        validSejwanItems.length > 0 ||
+        validMathiyaItems.length > 0
       ) {
         const allItemsToInsert = [
           ...validKhakhraItems.map((item) => {
@@ -621,6 +700,16 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
               price_per_kg: 0,
             }
           }),
+          ...validMathiyaItems.map((item) => ({
+            order_id: order.id,
+            khakhra_type: item.type,
+            quantity_kg: (item.packetQuantity || 0) * 0.2,
+            total_price: (item.packetQuantity || 0) * (item.packetPrice || 0),
+            is_packet_item: true,
+            packet_quantity: item.packetQuantity || 0,
+            price_per_packet: item.packetPrice || 0,
+            price_per_kg: 0,
+          })),
         ]
 
         const { error: itemsError } = await supabase.from("khakhra_items").insert(allItemsToInsert)
@@ -634,6 +723,9 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
       })
       onOpenChange(false)
       onOrderUpdated()
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("orders:refresh"))
+      }
     } catch (error) {
       console.error("Error updating order:", error)
       toast({
@@ -661,12 +753,16 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="shopName">Shop Name *</Label>
-                <Input
+                <CustomerSearchInput
                   id="shopName"
                   value={shopName}
-                  onChange={(e) => setShopName(e.target.value)}
+                  onChange={setShopName}
+                  onCustomerSelect={(customer) => {
+                    setShopName(customer.shop_name)
+                    setCity(customer.city)
+                    setAddress(customer.address ?? "")
+                  }}
                   placeholder="Enter shop name"
-                  required
                 />
               </div>
               <div className="space-y-2">
@@ -972,6 +1068,116 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
             )}
           </div>
 
+          {/* Mathiya Puri */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Mathiya Puri</h3>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="wantsMathiya"
+                checked={wantsMathiya}
+                onCheckedChange={(checked) => {
+                  setWantsMathiya(checked)
+                  if (checked && mathiyaItems.length === 0) {
+                    setMathiyaItems([{ type: "", packetQuantity: 0, packetPrice: 42 }])
+                  }
+                }}
+              />
+              <Label htmlFor="wantsMathiya">Customer wants Mathiya Puri (200gm packets)</Label>
+            </div>
+            {wantsMathiya && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Nani or Moti — set selling price per packet</p>
+                  <Button type="button" onClick={addMathiyaItem} size="sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add line
+                  </Button>
+                </div>
+                {mathiyaItems.map((item, index) => {
+                  const mathiyaTypes = KHAKHRA_TYPES.filter((t) => t.category === "mathiyaPuri")
+                  const selected = mathiyaTypes.find((t) => t.name === item.type)
+                  const mrp = selected && "mrp" in selected ? (selected as { mrp: number }).mrp : undefined
+                  const cost = selected?.basePacketCost
+
+                  return (
+                    <div
+                      key={index}
+                      className="grid grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-2 md:grid-cols-6 md:items-end"
+                    >
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Product</Label>
+                        <Select value={item.type} onValueChange={(value) => updateMathiyaItem(index, "type", value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select variety" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mathiyaTypes.map((type) => (
+                              <SelectItem key={type.name} value={type.name}>
+                                {type.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Packets</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.packetQuantity || 0}
+                          onChange={(e) =>
+                            updateMathiyaItem(index, "packetQuantity", Number.parseInt(e.target.value) || 0)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Price / packet (₹)</Label>
+                        <Input
+                          type="number"
+                          min={selected?.basePacketPrice ?? 42}
+                          max={selected?.maxPacketPrice ?? 50}
+                          step={1}
+                          value={item.packetPrice || ""}
+                          onChange={(e) =>
+                            updateMathiyaItem(index, "packetPrice", Number.parseFloat(e.target.value) || 0)
+                          }
+                        />
+                        {selected && mrp != null && cost != null && (
+                          <p className="text-xs text-muted-foreground">
+                            MRP: ₹{mrp.toLocaleString("en-IN")} | Our cost: ₹{cost.toLocaleString("en-IN")}
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Line total</Label>
+                        <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm">
+                          ₹{calculateMathiyaItemTotal(item).toLocaleString("en-IN")}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Est. profit</Label>
+                        <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
+                          ₹{mathiyaProfitPreview(item).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      {mathiyaItems.length >= 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="md:col-span-6"
+                          onClick={() => removeMathiyaItem(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Bhakarwadi Option */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Bhakarwadi Option</h3>
@@ -1134,7 +1340,8 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
                           (type) =>
                             type.category !== "bhakarwadi" &&
                             type.category !== "fulvadi" &&
-                            type.category !== "sejwan",
+                            type.category !== "sejwan" &&
+                            type.category !== "mathiyaPuri",
                         ).map((type) => (
                           <SelectItem key={type.name} value={type.name}>
                             {type.name} - ₹{type.basePrice}

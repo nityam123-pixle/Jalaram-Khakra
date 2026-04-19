@@ -12,7 +12,7 @@ import {
 import { Package, IndianRupee, ShoppingBag, TrendingUp } from "lucide-react"
 
 export default function ProductsPage() {
-  const { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki } = getKhakhraTypesByCategory()
+  const { regular, premium, bhakri, farali, bhakarwadi, fulvadi, chikki, mathiyaPuri } = getKhakhraTypesByCategory()
 
   return (
     <div className="h-full overflow-auto">
@@ -234,6 +234,67 @@ export default function ProductsPage() {
             </CardContent>
           </Card>
 
+          {/* Mathiya Puri */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5" />
+                Mathiya Puri Varieties
+              </CardTitle>
+              <div className="flex flex-col gap-0.5 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1 font-medium text-foreground">
+                  <IndianRupee className="h-3.5 w-3.5" />
+                  200gm packets · flexible selling price
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {mathiyaPuri.map((type) => {
+                  const mrp = "mrp" in type ? type.mrp : 0
+                  const cost = type.basePacketCost
+                  const minP = type.basePacketPrice
+                  const maxP = type.maxPacketPrice
+                  const profitRangeLabel =
+                    type.name === "Mathiya Puri Nani"
+                      ? "₹4.30 – ₹12.30 per packet"
+                      : "₹6 – ₹11 per packet"
+
+                  return (
+                    <div key={type.name} className="rounded-lg border p-2">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-sm font-medium">{type.name}</span>
+                        <Badge variant="outline" className="font-mono text-xs tabular-nums">
+                          200gm
+                        </Badge>
+                      </div>
+                      <div className="flex flex-col gap-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">MRP</span>
+                          <span className="font-mono tabular-nums">₹{mrp.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Our cost</span>
+                          <span className="font-mono tabular-nums">₹{cost.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Selling range</span>
+                          <span className="font-mono tabular-nums">
+                            ₹{minP.toLocaleString("en-IN")} – ₹{maxP.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t border-border pt-1">
+                          <span className="text-muted-foreground">Profit range</span>
+                          <span className="font-mono tabular-nums text-foreground">{profitRangeLabel}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Farali Khakhra Options - Flexible pricing */}
           <Card>
             <CardHeader>
@@ -405,6 +466,14 @@ export default function ProductsPage() {
                   <li>• Our cost: ₹80/packet</li>
                   <li>• Fixed profit: ₹10/packet</li>
                   <li>• Sold by packet only</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">
+                <h4 className="font-semibold mb-2">Mathiya Puri</h4>
+                <ul className="space-y-1 text-muted-foreground">
+                  <li>• Nani: MRP ₹80, cost ₹37.70, sell ₹42–₹50</li>
+                  <li>• Moti: MRP ₹90, cost ₹39, sell ₹45–₹50</li>
+                  <li>• Profit: ₹4.30–₹12.30 (Nani), ₹6–₹11 (Moti) per packet</li>
                 </ul>
               </div>
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg">

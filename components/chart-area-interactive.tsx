@@ -1,22 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 import { useIsMobile } from "@/hooks/use-mobile"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import {
   Select,
   SelectContent,
@@ -24,175 +13,118 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group"
-const chartData = [
-  { date: "2024-04-01", desktop: 222, mobile: 150 },
-  { date: "2024-04-02", desktop: 97, mobile: 180 },
-  { date: "2024-04-03", desktop: 167, mobile: 120 },
-  { date: "2024-04-04", desktop: 242, mobile: 260 },
-  { date: "2024-04-05", desktop: 373, mobile: 290 },
-  { date: "2024-04-06", desktop: 301, mobile: 340 },
-  { date: "2024-04-07", desktop: 245, mobile: 180 },
-  { date: "2024-04-08", desktop: 409, mobile: 320 },
-  { date: "2024-04-09", desktop: 59, mobile: 110 },
-  { date: "2024-04-10", desktop: 261, mobile: 190 },
-  { date: "2024-04-11", desktop: 327, mobile: 350 },
-  { date: "2024-04-12", desktop: 292, mobile: 210 },
-  { date: "2024-04-13", desktop: 342, mobile: 380 },
-  { date: "2024-04-14", desktop: 137, mobile: 220 },
-  { date: "2024-04-15", desktop: 120, mobile: 170 },
-  { date: "2024-04-16", desktop: 138, mobile: 190 },
-  { date: "2024-04-17", desktop: 446, mobile: 360 },
-  { date: "2024-04-18", desktop: 364, mobile: 410 },
-  { date: "2024-04-19", desktop: 243, mobile: 180 },
-  { date: "2024-04-20", desktop: 89, mobile: 150 },
-  { date: "2024-04-21", desktop: 137, mobile: 200 },
-  { date: "2024-04-22", desktop: 224, mobile: 170 },
-  { date: "2024-04-23", desktop: 138, mobile: 230 },
-  { date: "2024-04-24", desktop: 387, mobile: 290 },
-  { date: "2024-04-25", desktop: 215, mobile: 250 },
-  { date: "2024-04-26", desktop: 75, mobile: 130 },
-  { date: "2024-04-27", desktop: 383, mobile: 420 },
-  { date: "2024-04-28", desktop: 122, mobile: 180 },
-  { date: "2024-04-29", desktop: 315, mobile: 240 },
-  { date: "2024-04-30", desktop: 454, mobile: 380 },
-  { date: "2024-05-01", desktop: 165, mobile: 220 },
-  { date: "2024-05-02", desktop: 293, mobile: 310 },
-  { date: "2024-05-03", desktop: 247, mobile: 190 },
-  { date: "2024-05-04", desktop: 385, mobile: 420 },
-  { date: "2024-05-05", desktop: 481, mobile: 390 },
-  { date: "2024-05-06", desktop: 498, mobile: 520 },
-  { date: "2024-05-07", desktop: 388, mobile: 300 },
-  { date: "2024-05-08", desktop: 149, mobile: 210 },
-  { date: "2024-05-09", desktop: 227, mobile: 180 },
-  { date: "2024-05-10", desktop: 293, mobile: 330 },
-  { date: "2024-05-11", desktop: 335, mobile: 270 },
-  { date: "2024-05-12", desktop: 197, mobile: 240 },
-  { date: "2024-05-13", desktop: 197, mobile: 160 },
-  { date: "2024-05-14", desktop: 448, mobile: 490 },
-  { date: "2024-05-15", desktop: 473, mobile: 380 },
-  { date: "2024-05-16", desktop: 338, mobile: 400 },
-  { date: "2024-05-17", desktop: 499, mobile: 420 },
-  { date: "2024-05-18", desktop: 315, mobile: 350 },
-  { date: "2024-05-19", desktop: 235, mobile: 180 },
-  { date: "2024-05-20", desktop: 177, mobile: 230 },
-  { date: "2024-05-21", desktop: 82, mobile: 140 },
-  { date: "2024-05-22", desktop: 81, mobile: 120 },
-  { date: "2024-05-23", desktop: 252, mobile: 290 },
-  { date: "2024-05-24", desktop: 294, mobile: 220 },
-  { date: "2024-05-25", desktop: 201, mobile: 250 },
-  { date: "2024-05-26", desktop: 213, mobile: 170 },
-  { date: "2024-05-27", desktop: 420, mobile: 460 },
-  { date: "2024-05-28", desktop: 233, mobile: 190 },
-  { date: "2024-05-29", desktop: 78, mobile: 130 },
-  { date: "2024-05-30", desktop: 340, mobile: 280 },
-  { date: "2024-05-31", desktop: 178, mobile: 230 },
-  { date: "2024-06-01", desktop: 178, mobile: 200 },
-  { date: "2024-06-02", desktop: 470, mobile: 410 },
-  { date: "2024-06-03", desktop: 103, mobile: 160 },
-  { date: "2024-06-04", desktop: 439, mobile: 380 },
-  { date: "2024-06-05", desktop: 88, mobile: 140 },
-  { date: "2024-06-06", desktop: 294, mobile: 250 },
-  { date: "2024-06-07", desktop: 323, mobile: 370 },
-  { date: "2024-06-08", desktop: 385, mobile: 320 },
-  { date: "2024-06-09", desktop: 438, mobile: 480 },
-  { date: "2024-06-10", desktop: 155, mobile: 200 },
-  { date: "2024-06-11", desktop: 92, mobile: 150 },
-  { date: "2024-06-12", desktop: 492, mobile: 420 },
-  { date: "2024-06-13", desktop: 81, mobile: 130 },
-  { date: "2024-06-14", desktop: 426, mobile: 380 },
-  { date: "2024-06-15", desktop: 307, mobile: 350 },
-  { date: "2024-06-16", desktop: 371, mobile: 310 },
-  { date: "2024-06-17", desktop: 475, mobile: 520 },
-  { date: "2024-06-18", desktop: 107, mobile: 170 },
-  { date: "2024-06-19", desktop: 341, mobile: 290 },
-  { date: "2024-06-20", desktop: 408, mobile: 450 },
-  { date: "2024-06-21", desktop: 169, mobile: 210 },
-  { date: "2024-06-22", desktop: 317, mobile: 270 },
-  { date: "2024-06-23", desktop: 480, mobile: 530 },
-  { date: "2024-06-24", desktop: 132, mobile: 180 },
-  { date: "2024-06-25", desktop: 141, mobile: 190 },
-  { date: "2024-06-26", desktop: 434, mobile: 380 },
-  { date: "2024-06-27", desktop: 448, mobile: 490 },
-  { date: "2024-06-28", desktop: 149, mobile: 200 },
-  { date: "2024-06-29", desktop: 103, mobile: 160 },
-  { date: "2024-06-30", desktop: 446, mobile: 400 },
-]
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { calculateOrderProfit, calculateOrderTotalAmount, type Order } from "@/lib/supabase"
+import { cn } from "@/lib/utils"
 
 const chartConfig = {
-  visitors: {
-    label: "Visitors",
-  },
-  desktop: {
-    label: "Desktop",
+  revenue: {
+    label: "Revenue ₹",
     color: "hsl(var(--chart-1))",
   },
-  mobile: {
-    label: "Mobile",
+  profit: {
+    label: "Profit ₹",
     color: "hsl(var(--chart-2))",
   },
 } satisfies ChartConfig
 
-export function ChartAreaInteractive() {
+function localDateKey(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+type DayRow = {
+  date: string
+  revenue: number
+  profit: number
+  ordersCount: number
+}
+
+function buildSeries(orders: Order[], timeRange: "90d" | "30d" | "7d"): DayRow[] {
+  const days = timeRange === "90d" ? 90 : timeRange === "30d" ? 30 : 7
+  const end = new Date()
+  const start = new Date(end)
+  start.setDate(start.getDate() - (days - 1))
+  start.setHours(0, 0, 0, 0)
+
+  const keys: string[] = []
+  const cursor = new Date(start)
+  while (cursor <= end) {
+    keys.push(localDateKey(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  const map = new Map<string, { revenue: number; profit: number; ordersCount: number }>()
+  keys.forEach((k) => map.set(k, { revenue: 0, profit: 0, ordersCount: 0 }))
+
+  for (const order of orders) {
+    const key = localDateKey(new Date(order.created_at))
+    const bucket = map.get(key)
+    if (!bucket) continue
+    bucket.revenue += calculateOrderTotalAmount(order)
+    bucket.profit += calculateOrderProfit(order).totalProfit
+    bucket.ordersCount += 1
+  }
+
+  return keys.map((date) => {
+    const b = map.get(date)!
+    return {
+      date,
+      revenue: Math.round(b.revenue),
+      profit: Math.round(b.profit),
+      ordersCount: b.ordersCount,
+    }
+  })
+}
+
+function formatInr(n: number) {
+  return `₹${n.toLocaleString("en-IN")}`
+}
+
+export function ChartAreaInteractive({ orders }: { orders: Order[] }) {
   const isMobile = useIsMobile()
-  const [timeRange, setTimeRange] = React.useState("30d")
+  const [timeRange, setTimeRange] = React.useState<"90d" | "30d" | "7d">("90d")
 
   React.useEffect(() => {
-    if (isMobile) {
-      setTimeRange("7d")
-    }
+    if (isMobile) setTimeRange("7d")
   }, [isMobile])
 
-  const filteredData = chartData.filter((item) => {
-    const date = new Date(item.date)
-    const referenceDate = new Date("2024-06-30")
-    let daysToSubtract = 90
-    if (timeRange === "30d") {
-      daysToSubtract = 30
-    } else if (timeRange === "7d") {
-      daysToSubtract = 7
-    }
-    const startDate = new Date(referenceDate)
-    startDate.setDate(startDate.getDate() - daysToSubtract)
-    return date >= startDate
-  })
+  const filteredData = React.useMemo(() => buildSeries(orders, timeRange), [orders, timeRange])
 
   return (
-    <Card className="@container/card">
-      <CardHeader className="relative">
-        <CardTitle>Total Visitors</CardTitle>
-        <CardDescription>
-          <span className="@[540px]/card:block hidden">
-            Total for the last 3 months
-          </span>
-          <span className="@[540px]/card:hidden">Last 3 months</span>
-        </CardDescription>
-        <div className="absolute right-4 top-4">
+    <Card className="@container/card rounded-xl border border-border pt-0">
+      <CardHeader className="relative flex flex-col gap-2 space-y-0 border-b px-4 py-4 sm:flex-row sm:px-6">
+        <div className="grid flex-1 gap-1">
+          <CardTitle>Revenue & Profit Trend</CardTitle>
+          <CardDescription>
+            <span className="@[540px]/card:block hidden">
+              Daily revenue (order totals) vs estimated profit; hover a day for details
+            </span>
+            <span className="@[540px]/card:hidden">Revenue & profit</span>
+          </CardDescription>
+        </div>
+        <div className="flex sm:ml-auto">
           <ToggleGroup
             type="single"
             value={timeRange}
-            onValueChange={setTimeRange}
+            onValueChange={(v) => v && setTimeRange(v as "90d" | "30d" | "7d")}
             variant="outline"
             className="@[767px]/card:flex hidden"
           >
-            <ToggleGroupItem value="90d" className="h-8 px-2.5">
+            <ToggleGroupItem value="90d" className="h-8 px-2.5 text-xs">
               Last 3 months
             </ToggleGroupItem>
-            <ToggleGroupItem value="30d" className="h-8 px-2.5">
+            <ToggleGroupItem value="30d" className="h-8 px-2.5 text-xs">
               Last 30 days
             </ToggleGroupItem>
-            <ToggleGroupItem value="7d" className="h-8 px-2.5">
+            <ToggleGroupItem value="7d" className="h-8 px-2.5 text-xs">
               Last 7 days
             </ToggleGroupItem>
           </ToggleGroup>
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger
-              className="@[767px]/card:hidden flex w-40"
-              aria-label="Select a value"
-            >
+          <Select value={timeRange} onValueChange={(v) => setTimeRange(v as "90d" | "30d" | "7d")}>
+            <SelectTrigger className="@[767px]/card:hidden flex w-40" aria-label="Select range">
               <SelectValue placeholder="Last 3 months" />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
@@ -210,79 +142,102 @@ export function ChartAreaInteractive() {
         </div>
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
-        <ChartContainer
-          config={chartConfig}
-          className="aspect-auto h-[250px] w-full"
-        >
-          <AreaChart data={filteredData}>
+        <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
+          <AreaChart data={filteredData} margin={{ left: 8, right: 8 }}>
             <defs>
-              <linearGradient id="fillDesktop" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-desktop)"
-                  stopOpacity={1.0}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-desktop)"
-                  stopOpacity={0.1}
-                />
+              <linearGradient id="fillRevenue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-revenue)" stopOpacity={0.35} />
+                <stop offset="95%" stopColor="var(--color-revenue)" stopOpacity={0.05} />
               </linearGradient>
-              <linearGradient id="fillMobile" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-mobile)"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-mobile)"
-                  stopOpacity={0.1}
-                />
+              <linearGradient id="fillProfit" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-profit)" stopOpacity={0.35} />
+                <stop offset="95%" stopColor="var(--color-profit)" stopOpacity={0.05} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} />
+            <CartesianGrid vertical={false} className="stroke-border" />
             <XAxis
               dataKey="date"
               tickLine={false}
               axisLine={false}
               tickMargin={8}
-              minTickGap={32}
+              minTickGap={24}
               tickFormatter={(value) => {
                 const date = new Date(value)
-                return date.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })
+                return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" })
               }}
             />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={56}
+              tickFormatter={(v) => Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+            />
             <ChartTooltip
-              cursor={false}
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(value) => {
-                    return new Date(value).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }}
-                  indicator="dot"
-                />
-              }
+              cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null
+                const d = payload[0].payload as DayRow
+                const marginPct = d.revenue > 0 ? (d.profit / d.revenue) * 100 : 0
+                const label = new Date(d.date).toLocaleDateString("en-IN", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })
+                return (
+                  <div
+                    className={cn(
+                      "grid min-w-[220px] max-w-[280px] gap-2 rounded-lg border border-border/50 bg-popover px-3 py-2.5 text-xs shadow-xl",
+                    )}
+                  >
+                    <div className="font-medium text-foreground">{label}</div>
+                    <div className="grid gap-2 border-t border-border pt-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-muted-foreground">Revenue</span>
+                        <span className="text-right font-mono font-semibold tabular-nums text-foreground">
+                          {formatInr(d.revenue)}
+                        </span>
+                      </div>
+                      <p className="text-[10px] leading-snug text-muted-foreground">
+                        Sum of order totals (selling amounts) for this day.
+                      </p>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-muted-foreground">Est. profit</span>
+                        <span className="text-right font-mono font-semibold tabular-nums text-foreground">
+                          {formatInr(d.profit)}
+                        </span>
+                      </div>
+                      <p className="text-[10px] leading-snug text-muted-foreground">
+                        From your cost rules (khakhra, patra, chikki, etc.).
+                      </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">Margin</span>
+                        <span className="font-mono tabular-nums text-foreground">
+                          {d.revenue > 0 ? `${marginPct.toFixed(1)}%` : "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">Orders</span>
+                        <span className="tabular-nums text-foreground">{d.ordersCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }}
             />
             <Area
-              dataKey="mobile"
-              type="natural"
-              fill="url(#fillMobile)"
-              stroke="var(--color-mobile)"
-              stackId="a"
+              dataKey="profit"
+              type="monotone"
+              fill="url(#fillProfit)"
+              stroke="var(--color-profit)"
+              strokeWidth={1.5}
             />
             <Area
-              dataKey="desktop"
-              type="natural"
-              fill="url(#fillDesktop)"
-              stroke="var(--color-desktop)"
-              stackId="a"
+              dataKey="revenue"
+              type="monotone"
+              fill="url(#fillRevenue)"
+              stroke="var(--color-revenue)"
+              strokeWidth={1.5}
             />
           </AreaChart>
         </ChartContainer>
