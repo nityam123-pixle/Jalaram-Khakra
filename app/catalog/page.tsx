@@ -1,5 +1,7 @@
 import { getCategories, getProducts } from "../actions/catalog"
 
+export const dynamic = "force-dynamic"
+
 export default async function CatalogPage() {
   const categories = await getCategories()
   const products = await getProducts()

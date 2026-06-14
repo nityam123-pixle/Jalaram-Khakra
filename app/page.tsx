@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { cn } from "@/lib/utils"
 import { getDashboardAnalytics, getOrdersForChart, getRecentOrders } from "./actions/analytics"
 
+export const dynamic = "force-dynamic"
+
 function previewLabel(order: any) {
   const t = order.items?.[0]?.categoryName
   return t || "Mixed / extras"

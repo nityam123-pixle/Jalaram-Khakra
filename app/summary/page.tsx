@@ -7,6 +7,8 @@ import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { getSummaryOrders } from "../actions/analytics"
 
+export const dynamic = "force-dynamic"
+
 export default async function SummaryPage() {
   const orders = await getSummaryOrders()
 
