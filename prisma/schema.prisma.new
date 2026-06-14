@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PricingType {
+  FIXED
+  RANGE
+  MRP
+}
+
+enum UnitType {
+  KG
+  PACKET
+  BOX
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  completed // Legacy lowercase status support
+  pending // Legacy lowercase status support
+}
+
+// ----------------------------------------------------------------------------
+// NEW CATALOG SYSTEM
+// ----------------------------------------------------------------------------
+
+model ProductCategory {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  slug         String   @unique
+  isActive     Boolean  @default(true)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoryId String   @db.Uuid
+  name       String
+  slug       String   @unique
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  category ProductCategory  @relation(fields: [categoryId], references: [id])
+  variants ProductVariant[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId        String   @db.Uuid
+  name             String
+  sku              String?  @unique
+  weightKg         Float? // For KG-based or calculating total order weight
+  unitType         UnitType @default(PACKET)
+  isActive         Boolean  @default(true)
+  inventoryTracked Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  product        Product          @relation(fields: [productId], references: [id])
+  pricingRules   ProductPricing[]
+  pricingHistory PricingHistory[]
+  orderItems     OrderItem[]
+  inventory      InventoryLevel?
+
+  @@map("product_variants")
+}
+
+model InventoryLevel {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variantId      String   @unique @db.Uuid
+  warehouseId    String? // For future multi-warehouse expansion
+  availableStock Int      @default(0)
+  reservedStock  Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@map("inventory_levels")
+}
+
+model ProductPricing {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variantId       String      @db.Uuid
+  pricingType     PricingType @default(FIXED)
+  costPrice       Float
+  minSellingPrice Float?
+  maxSellingPrice Float?
+  effectiveFrom   DateTime    @default(now())
+  effectiveTo     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("product_pricing")
+}
+
+model PricingHistory {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variantId       String      @db.Uuid
+  pricingType     PricingType
+  costPrice       Float
+  minSellingPrice Float?
+  maxSellingPrice Float?
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  createdAt       DateTime    @default(now())
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("pricing_history")
+}
+
+// ----------------------------------------------------------------------------
+// EXISTING TABLES (Extended)
+// ----------------------------------------------------------------------------
+
+model Customer {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_name  String
+  city       String
+  address    String?
+  phone      String?
+  created_at DateTime @default(now())
+
+  // NOTE: Order table already references shop_name and city (historically).
+  // Should eventually have relation here, but keeping legacy structure for now.
+
+  @@map("customers")
+}
+
+model Order {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_name        String
+  address          String
+  city             String
+  status           String   @default("pending") // Supports: pending, confirmed, processing, shipped, delivered, cancelled, overdue
+  total_khakhra_kg Float    @default(0)
+  total_amount     Float    @default(0)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Legacy columns (To be deprecated)
+  wants_patra              Boolean? @default(false)
+  patra_packets            Int?     @default(0)
+  patra_price_per_packet   Float?
+  wants_fulvadi            Boolean? @default(false)
+  fulvadi_packets          Int?     @default(0)
+  fulvadi_price_per_packet Float?
+  wants_chikki             Boolean? @default(false)
+  chikki_packets           Int?     @default(0)
+  chikki_price_per_packet  Float?
+
+  // Relations
+  items OrderItem[]
+
+  @@map("orders")
+}
+
+// Legacy table (to be migrated and dropped)
+model KhakhraItem {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id         String   @db.Uuid
+  khakhra_type     String
+  quantity_kg      Float
+  price_per_kg     Float
+  total_price      Float
+  created_at       DateTime @default(now())
+  is_packet_item   Boolean? @default(false)
+  packet_quantity  Int?     @default(0)
+  price_per_packet Float?   @default(0)
+
+  @@map("khakhra_items")
+}
+
+// ----------------------------------------------------------------------------
+// NEW ORDER ITEMS TABLE
+// ----------------------------------------------------------------------------
+
+model OrderItem {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId   String @db.Uuid
+  variantId String @db.Uuid
+  quantity  Float
+
+  // Snapshot fields (User requirement 2)
+  productName  String
+  categoryName String
+  variantName  String
+
+  // Unit pricing (User requirement 1)
+  unitCostPrice    Float
+  unitSellingPrice Float
+
+  // Totals (User requirement 1)
+  totalCost    Float
+  totalRevenue Float
+  totalProfit  Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@map("order_items")
+}
