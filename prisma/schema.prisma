@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  engineType = "library"
 }
 
 datasource db {
@@ -123,6 +124,7 @@ model PricingHistory {
   effectiveFrom   DateTime
   effectiveTo     DateTime?
   createdAt       DateTime    @default(now())
+  correctionReason String?
 
   variant ProductVariant @relation(fields: [variantId], references: [id])
 
