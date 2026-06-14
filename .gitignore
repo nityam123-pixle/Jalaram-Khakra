@@ -49,3 +49,5 @@ Thumbs.db
 
 # pnpm
 .pnpm-store/
+
+/lib/generated/prisma
