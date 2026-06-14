@@ -1,14 +1,34 @@
 "use server"
 
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "../../lib/prisma"
 import { revalidatePath } from "next/cache"
-
-const prisma = new PrismaClient()
 
 // Categories
 export async function getCategories() {
   return prisma.productCategory.findMany({
     orderBy: { displayOrder: "asc" }
+  })
+}
+
+export async function getFullCatalog() {
+  return prisma.productCategory.findMany({
+    where: { isActive: true },
+    orderBy: { displayOrder: "asc" },
+    include: {
+      products: {
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        include: {
+          variants: {
+            where: { isActive: true },
+            orderBy: { name: "asc" },
+            include: {
+              pricingRules: true
+            }
+          }
+        }
+      }
+    }
   })
 }
 

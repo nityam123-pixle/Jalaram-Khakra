@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "../lib/prisma"
 import { calculateOrderProfit, getKhakhraTypesByCategory, Order as LegacyOrder } from "../lib/supabase"
-
-const prisma = new PrismaClient()
 
 async function main() {
   console.log("Migrating Historical Orders to new OrderItems schema...")

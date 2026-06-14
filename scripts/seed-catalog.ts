@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "../lib/prisma"
 import { KHAKHRA_TYPES } from "../lib/supabase"
-
-const prisma = new PrismaClient()
 
 // Helper to generate simple slugs
 const toSlug = (str: string) => str.toLowerCase().replace(/[^a-z0-9]+/g, '-')

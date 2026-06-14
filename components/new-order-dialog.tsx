@@ -1,46 +1,28 @@
 "use client"
 
 import type React from "react"
-
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { CustomerSearchInput } from "@/components/customer-search-input"
-import { addCustomer, findCustomerByShopAndCity } from "@/lib/customers"
-import {
-  CITIES,
-  KHAKHRA_TYPES,
-  PATRA_PRICE_MIN,
-  PATRA_PRICE_MAX,
-  PATRA_1KG_PRICE_MIN,
-  PATRA_1KG_PRICE_MAX,
-  PATRA_200G_PRICE_MIN,
-  PATRA_200G_PRICE_MAX,
-  CHIKKI_PRICE_MIN,
-  CHIKKI_PRICE_MAX,
-  CHIKKI_MRP,
-  BHAKARWADI_PRICE_MIN,
-  BHAKARWADI_PACKET_PRICE,
-  supabase,
-  getPriceRange,
-} from "@/lib/supabase"
-import { Plus, X, IndianRupee } from "lucide-react"
-import { useState } from "react"
+import { Plus, X, IndianRupee, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { getSupabaseErrorMessage } from "@/lib/utils"
 
-interface KhakhraItem {
-  type: string
+import { getFullCatalog } from "@/app/actions/catalog"
+import { createOrder, type OrderItemInput } from "@/app/actions/order"
+import { CITIES } from "@/lib/supabase"
+
+interface OrderItemRow {
+  uiId: string
+  categoryId: string
+  productId: string
+  variantId: string
   quantity: number
-  price: number
-  // New fields for packet-based items
-  sellBy: "kg" | "packet"
-  packetQuantity?: number
-  packetPrice?: number
+  sellingPrice: number
 }
 
 interface NewOrderDialogProps {
@@ -52,618 +34,141 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  
+  // Catalog Data
+  const [catalog, setCatalog] = useState<any[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(true)
+
+  // Customer Data
   const [shopName, setShopName] = useState("")
   const [address, setAddress] = useState("")
   const [city, setCity] = useState("")
-  const [khakhraItems, setKhakhraItems] = useState<KhakhraItem[]>([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
-  const [wantsPatra, setWantsPatra] = useState(false)
-  const [patraPackets, setPatraPackets] = useState(0)
-  const [patraPrice, setPatraPrice] = useState(PATRA_PRICE_MIN)
-  const [wantsSejwan, setWantsSejwan] = useState(false)
-  const [sejwanItems, setSejwanItems] = useState<
-    { type: string; packetQuantity: number; packetPrice: number }[]
-  >([])
-  const [wantsMathiya, setWantsMathiya] = useState(false)
-  const [mathiyaItems, setMathiyaItems] = useState<
-    { type: string; packetQuantity: number; packetPrice: number }[]
-  >([])
-  const [wantsChikki, setWantsChikki] = useState(false)
-  const [chikkiPackets, setChikkiPackets] = useState(0)
-  const [chikkiPrice, setChikkiPrice] = useState(CHIKKI_PRICE_MIN)
-  const [wantsBhakarwadi, setWantsBhakarwadi] = useState(false)
-  const [bhakarwadiItems, setBhakarwadiItems] = useState<
-    {
-      type: string
-      quantity: number
-      price: number
-      sellBy: "kg" | "packet"
-      packetQuantity?: number
-      packetPrice?: number
-    }[]
-  >([])
-  const [wantsFulvadi, setWantsFulvadi] = useState(false)
-  const [fulvadiItems, setFulvadiItems] = useState<
-    {
-      type: string
-      quantity: number
-      price: number
-      sellBy: "packet"
-      packetQuantity?: number
-      packetPrice?: number
-    }[]
-  >([])
 
-  const addKhakhraItem = () => {
-    setKhakhraItems([...khakhraItems, { type: "", quantity: 0, price: 200, sellBy: "kg" }])
-  }
+  // Items
+  const [items, setItems] = useState<OrderItemRow[]>([])
 
-  const removeKhakhraItem = (index: number) => {
-    if (khakhraItems.length > 1) {
-      setKhakhraItems(khakhraItems.filter((_, i) => i !== index))
+  useEffect(() => {
+    if (open && catalog.length === 0) {
+      setCatalogLoading(true)
+      getFullCatalog()
+        .then((data) => {
+          setCatalog(data)
+          if (items.length === 0) {
+            addItem(data)
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load catalog", err)
+          toast({ title: "Error", description: "Failed to load product catalog", variant: "destructive" })
+        })
+        .finally(() => {
+          setCatalogLoading(false)
+        })
     }
-  }
+  }, [open, catalog.length])
 
-  const updateKhakhraItem = (index: number, field: keyof KhakhraItem, value: string | number | boolean) => {
-    setKhakhraItems((prevItems) => {
-      const updated = [...prevItems]
-      const currentItem = { ...updated[index] }
-
-      if (field === "type") {
-        const newSelectedType = KHAKHRA_TYPES.find((t) => t.name === value)
-        const newSellBy = newSelectedType?.sellBy === "both" ? "packet" : "kg"
-        currentItem.type = value as string
-        currentItem.sellBy = newSellBy
-        currentItem.price = newSellBy === "kg" ? newSelectedType?.basePrice || 200 : 0
-        currentItem.packetPrice = newSellBy === "packet" ? newSelectedType?.basePacketPrice || 0 : 0
-        currentItem.quantity = 0
-        currentItem.packetQuantity = 0
-      } else if (field === "sellBy") {
-        const selectedType = KHAKHRA_TYPES.find((t) => t.name === currentItem.type)
-        currentItem.sellBy = value as "kg" | "packet"
-        currentItem.quantity = 0
-        currentItem.packetQuantity = 0
-        currentItem.price = currentItem.sellBy === "kg" ? selectedType?.basePrice || 200 : 0
-        currentItem.packetPrice = currentItem.sellBy === "packet" ? selectedType?.basePacketPrice || 0 : 0
-      } else {
-        if (field === "quantity" || field === "packetQuantity" || field === "price" || field === "packetPrice") {
-          ;(currentItem as any)[field] = Number(value)
-        } else {
-          ;(currentItem as any)[field] = value
-        }
-      }
-      updated[index] = currentItem
-      return updated
-    })
-  }
-
-  const addBhakarwadiItem = () => {
-    setBhakarwadiItems([
-      ...bhakarwadiItems,
-      { type: "", quantity: 0, price: BHAKARWADI_PACKET_PRICE, sellBy: "packet" },
-    ])
-  }
-
-  const removeBhakarwadiItem = (index: number) => {
-    if (bhakarwadiItems.length > 1) {
-      setBhakarwadiItems(bhakarwadiItems.filter((_, i) => i !== index))
-    }
-  }
-
-  const updateBhakarwadiItem = (index: number, field: string, value: any) => {
-    setBhakarwadiItems((prev) => {
-      const updated = [...prev]
-      const currentItem = { ...updated[index] }
-
-      if (field === "type") {
-        const bhakarwadiType = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "bhakarwadi")
-        currentItem.type = value
-        currentItem.sellBy = "packet"
-        currentItem.price = BHAKARWADI_PACKET_PRICE
-        currentItem.packetPrice = BHAKARWADI_PACKET_PRICE
-        currentItem.quantity = 0
-        currentItem.packetQuantity = 0
-      } else if (field === "sellBy") {
-        currentItem.sellBy = value
-        currentItem.quantity = 0
-        currentItem.packetQuantity = 0
-        if (value === "packet") {
-          currentItem.packetPrice = BHAKARWADI_PACKET_PRICE
-          currentItem.price = BHAKARWADI_PACKET_PRICE
-        } else {
-          currentItem.price = BHAKARWADI_PRICE_MIN
-        }
-      } else {
-        currentItem[field] = value
-      }
-
-      updated[index] = currentItem
-      return updated
-    })
-  }
-
-  const addFulvadiItem = () => {
-    setFulvadiItems([...fulvadiItems, { type: "", quantity: 0, price: 90, sellBy: "packet" }])
-  }
-
-  const removeFulvadiItem = (index: number) => {
-    if (fulvadiItems.length > 1) {
-      setFulvadiItems(fulvadiItems.filter((_, i) => i !== index))
-    }
-  }
-
-  const updateFulvadiItem = (index: number, field: string, value: any) => {
-    setFulvadiItems((prev) => {
-      const updated = [...prev]
-      const currentItem = { ...updated[index] }
-
-      if (field === "type") {
-        const fulvadiType = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "fulvadi")
-        currentItem.type = value
-        currentItem.sellBy = "packet"
-        currentItem.price = 90
-        currentItem.packetPrice = 90
-        currentItem.quantity = 0
-        currentItem.packetQuantity = 0
-      } else {
-        currentItem[field] = value
-      }
-
-      updated[index] = currentItem
-      return updated
-    })
-  }
-
-  const addSejwanItem = () => {
-    setSejwanItems((prev) => [
+  const addItem = (catData = catalog) => {
+    setItems((prev) => [
       ...prev,
-      { type: "", packetQuantity: 0, packetPrice: PATRA_1KG_PRICE_MIN },
+      {
+        uiId: Math.random().toString(36).substring(7),
+        categoryId: "",
+        productId: "",
+        variantId: "",
+        quantity: 1,
+        sellingPrice: 0,
+      },
     ])
   }
 
-  const removeSejwanItem = (index: number) => {
-    setSejwanItems((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const updateSejwanItem = (index: number, field: string, value: string | number) => {
-    setSejwanItems((prev) => {
-      const updated = [...prev]
-      const currentItem = { ...updated[index] }
-      if (field === "type") {
-        const sejwanType = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "sejwan")
-        currentItem.type = value as string
-        currentItem.packetPrice = sejwanType?.basePacketPrice ?? PATRA_1KG_PRICE_MIN
-        currentItem.packetQuantity = 0
-      } else {
-        ;(currentItem as any)[field] = value
-      }
-      updated[index] = currentItem
-      return updated
-    })
-  }
-
-  const calculateSejwanItemTotal = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
-    if (!item.type) return 0
-    return (item.packetQuantity || 0) * (item.packetPrice || 0)
-  }
-
-  const addMathiyaItem = () => {
-    setMathiyaItems((prev) => [
-      ...prev,
-      { type: "", packetQuantity: 0, packetPrice: 42 },
-    ])
-  }
-
-  const removeMathiyaItem = (index: number) => {
-    setMathiyaItems((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const updateMathiyaItem = (index: number, field: string, value: string | number) => {
-    setMathiyaItems((prev) => {
-      const updated = [...prev]
-      const currentItem = { ...updated[index] }
-      if (field === "type") {
-        const mt = KHAKHRA_TYPES.find((t) => t.name === value && t.category === "mathiyaPuri")
-        currentItem.type = value as string
-        currentItem.packetPrice = mt?.basePacketPrice ?? 42
-        currentItem.packetQuantity = 0
-      } else {
-        ;(currentItem as any)[field] = value
-      }
-      updated[index] = currentItem
-      return updated
-    })
-  }
-
-  const calculateMathiyaItemTotal = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
-    if (!item.type) return 0
-    return (item.packetQuantity || 0) * (item.packetPrice || 0)
-  }
-
-  const mathiyaProfitPreview = (item: { type: string; packetQuantity: number; packetPrice: number }) => {
-    const mt = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "mathiyaPuri")
-    if (!mt || !item.packetQuantity) return 0
-    const cost = mt.basePacketCost ?? 0
-    return (item.packetPrice - cost) * item.packetQuantity
-  }
-
-  const calculateItemTotal = (item: KhakhraItem) => {
-    if (!item.type) return 0
-
-    if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
-      return item.packetQuantity * item.packetPrice
-    } else if (item.quantity > 0) {
-      return item.quantity * item.price
+  const removeItem = (uiId: string) => {
+    if (items.length > 1) {
+      setItems(items.filter((i) => i.uiId !== uiId))
     }
-    return 0
   }
 
-  const calculateBhakarwadiItemTotal = (item: any) => {
-    if (!item.type) return 0
-    if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
-      return item.packetQuantity * item.packetPrice
-    } else if (item.quantity > 0) {
-      return item.quantity * item.price
-    }
-    return 0
-  }
+  const updateItem = (uiId: string, field: keyof OrderItemRow, value: any) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.uiId !== uiId) return item
+        
+        const updated = { ...item, [field]: value }
 
-  const calculateFulvadiItemTotal = (item: any) => {
-    if (!item.type) return 0
-    if (item.packetQuantity && item.packetPrice) {
-      return item.packetQuantity * item.packetPrice
-    }
-    return 0
+        // Handle cascading resets
+        if (field === "categoryId") {
+          updated.productId = ""
+          updated.variantId = ""
+          updated.sellingPrice = 0
+        } else if (field === "productId") {
+          updated.variantId = ""
+          updated.sellingPrice = 0
+        } else if (field === "variantId") {
+          // Auto-set the selling price to the min price or MRP
+          const cat = catalog.find(c => c.id === updated.categoryId)
+          const prod = cat?.products.find((p: any) => p.id === updated.productId)
+          const variant = prod?.variants.find((v: any) => v.id === value)
+          if (variant && variant.pricingRules[0]) {
+             const pricing = variant.pricingRules[0]
+             updated.sellingPrice = Number(pricing.minSellingPrice || pricing.costPrice)
+          }
+        }
+
+        return updated
+      })
+    )
   }
 
   const calculateTotal = () => {
-    const khakhraTotal = khakhraItems.reduce((sum, item) => {
-      return sum + calculateItemTotal(item)
-    }, 0)
-
-    const bhakarwadiTotal = bhakarwadiItems.reduce((sum, item) => {
-      return sum + calculateBhakarwadiItemTotal(item)
-    }, 0)
-
-    const fulvadiTotal = fulvadiItems.reduce((sum, item) => {
-      return sum + calculateFulvadiItemTotal(item)
-    }, 0)
-
-    const patraTotal = wantsPatra ? patraPackets * (patraPrice || PATRA_PRICE_MIN) : 0
-    const sejwanTotal = sejwanItems.reduce((sum, item) => sum + calculateSejwanItemTotal(item), 0)
-    const mathiyaTotal = mathiyaItems.reduce((sum, item) => sum + calculateMathiyaItemTotal(item), 0)
-    const chikkiTotal = wantsChikki ? chikkiPackets * (chikkiPrice || CHIKKI_PRICE_MIN) : 0
-    return khakhraTotal + bhakarwadiTotal + fulvadiTotal + patraTotal + sejwanTotal + mathiyaTotal + chikkiTotal
-  }
-
-  const resetForm = () => {
-    setShopName("")
-    setAddress("")
-    setCity("")
-    setKhakhraItems([{ type: "", quantity: 0, price: 200, sellBy: "kg" }])
-    setWantsPatra(false)
-    setPatraPackets(0)
-    setPatraPrice(PATRA_PRICE_MIN)
-    setWantsSejwan(false)
-    setSejwanItems([])
-    setWantsMathiya(false)
-    setMathiyaItems([])
-    setWantsChikki(false)
-    setChikkiPackets(0)
-    setChikkiPrice(CHIKKI_PRICE_MIN)
-    setWantsBhakarwadi(false)
-    setBhakarwadiItems([])
-    setWantsFulvadi(false)
-    setFulvadiItems([])
+    return items.reduce((sum, item) => sum + (item.quantity * item.sellingPrice), 0)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!shopName || !address || !city) {
+      toast({ title: "Error", description: "Please fill in all customer fields", variant: "destructive" })
+      return
+    }
+
+    const validItems = items.filter(i => i.variantId && i.quantity > 0 && i.sellingPrice > 0)
+    if (validItems.length === 0) {
+      toast({ title: "Error", description: "Please add at least one valid item", variant: "destructive" })
+      return
+    }
+
     setLoading(true)
 
     try {
-      if (!shopName || !address || !city) {
-        toast({
-          title: "Error",
-          description: "Please fill in all required fields",
-          variant: "destructive",
-        })
-        return
-      }
+      const orderItemsInput: OrderItemInput[] = validItems.map(i => ({
+        variantId: i.variantId,
+        quantity: i.quantity,
+        sellingPrice: i.sellingPrice
+      }))
 
-      const validKhakhraItems = khakhraItems.filter(
-        (item) =>
-          item.type &&
-          (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
-      )
-
-      const validBhakarwadiItems = bhakarwadiItems.filter(
-        (item) =>
-          item.type &&
-          (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
-      )
-
-      const validFulvadiItems = fulvadiItems.filter(
-        (item) =>
-          item.type &&
-          (item.quantity > 0 || (item.sellBy === "packet" && item.packetQuantity && item.packetQuantity > 0)),
-      )
-
-      const validSejwanItems = sejwanItems.filter((item) => item.type && (item.packetQuantity ?? 0) > 0)
-      const validMathiyaItems = mathiyaItems.filter((item) => item.type && (item.packetQuantity ?? 0) > 0)
-
-      if (
-        validKhakhraItems.length === 0 &&
-        validBhakarwadiItems.length === 0 &&
-        validFulvadiItems.length === 0 &&
-        !wantsPatra &&
-        validSejwanItems.length === 0 &&
-        validMathiyaItems.length === 0 &&
-        !wantsChikki
-      ) {
-        toast({
-          title: "Error",
-          description: "Please add at least one item or select Patra/Sejwan/Mathiya/Chikki",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (wantsPatra && patraPackets <= 0) {
-        toast({
-          title: "Error",
-          description: "Please specify the number of Patra packets",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (wantsSejwan && validSejwanItems.length === 0) {
-        toast({
-          title: "Error",
-          description: "Please add at least one Sejwan Spring Viti item with quantity",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (wantsMathiya && validMathiyaItems.length === 0) {
-        toast({
-          title: "Error",
-          description: "Please add at least one Mathiya Puri item with quantity",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (wantsChikki && chikkiPackets <= 0) {
-        toast({
-          title: "Error",
-          description: "Please specify the number of Chikki packets",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const totalKhakhraKg =
-        validKhakhraItems.reduce((sum, item) => {
-          if (item.sellBy === "packet") {
-            return sum + (item.packetQuantity || 0) * 0.2
-          } else {
-            return sum + item.quantity
-          }
-        }, 0) +
-        validBhakarwadiItems.reduce((sum, item) => {
-          if (item.sellBy === "packet") {
-            return sum + (item.packetQuantity || 0) * 0.2
-          } else {
-            return sum + item.quantity
-          }
-        }, 0) +
-        validFulvadiItems.reduce((sum, item) => {
-          if (item.sellBy === "packet") {
-            return sum + (item.packetQuantity || 0) * 0.5
-          } else {
-            return sum + item.quantity
-          }
-        }, 0) +
-        validSejwanItems.reduce((sum, item) => {
-          const sejwanType = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "sejwan")
-          const weight = (sejwanType as any)?.packetWeight ?? 0.2
-          return sum + (item.packetQuantity || 0) * weight
-        }, 0) +
-        validMathiyaItems.reduce((sum, item) => {
-          return sum + (item.packetQuantity || 0) * 0.2
-        }, 0)
-
-      const totalAmount = calculateTotal()
-
-      const totalFulvadiPackets = validFulvadiItems.reduce(
-        (sum, item) => sum + (item.packetQuantity || 0),
-        0,
-      )
-
-      const insertData: Record<string, unknown> = {
-        shop_name: shopName,
-        address,
+      await createOrder({
+        shopName,
         city,
-        wants_patra: wantsPatra,
-        patra_packets: wantsPatra ? patraPackets : 0,
-        patra_price_per_packet: patraPrice || PATRA_PRICE_MIN,
-        wants_fulvadi: wantsFulvadi,
-        fulvadi_packets: wantsFulvadi ? totalFulvadiPackets : 0,
-        fulvadi_price_per_packet: 90,
-        wants_chikki: wantsChikki,
-        chikki_packets: wantsChikki ? chikkiPackets : 0,
-        chikki_price_per_packet: chikkiPrice || CHIKKI_PRICE_MIN,
-        total_khakhra_kg: totalKhakhraKg,
-        total_amount: totalAmount,
-        status: "pending",
-      }
-
-      const { data: insertedRows, error: orderError } = await supabase.from("orders").insert(insertData).select()
-
-      if (orderError) throw orderError
-
-      const order = insertedRows?.[0] as { id: string } | undefined
-      if (!order?.id) {
-        throw new Error(
-          "Order was saved but not returned. Add a Supabase policy allowing SELECT on `orders` for the same role that inserts (RLS often blocks read-after-insert).",
-        )
-      }
-
-      if (
-        validKhakhraItems.length > 0 ||
-        validBhakarwadiItems.length > 0 ||
-        validFulvadiItems.length > 0 ||
-        validSejwanItems.length > 0 ||
-        validMathiyaItems.length > 0
-      ) {
-        const allItemsToInsert = [
-          ...validKhakhraItems.map((item) => {
-            const baseItem = {
-              order_id: order.id,
-              khakhra_type: item.type,
-            }
-
-            if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
-              return {
-                ...baseItem,
-                quantity_kg: item.packetQuantity * 0.2,
-                total_price: item.packetQuantity * item.packetPrice,
-                is_packet_item: true,
-                packet_quantity: item.packetQuantity,
-                price_per_packet: item.packetPrice,
-                price_per_kg: KHAKHRA_TYPES.find((t) => t.name === item.type)?.basePrice || 0,
-              }
-            } else {
-              return {
-                ...baseItem,
-                quantity_kg: item.quantity,
-                total_price: item.quantity * item.price,
-                is_packet_item: false,
-                packet_quantity: 0,
-                price_per_packet: 0,
-                price_per_kg: item.price,
-              }
-            }
-          }),
-          ...validBhakarwadiItems.map((item) => {
-            const baseItem = {
-              order_id: order.id,
-              khakhra_type: item.type,
-            }
-
-            if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
-              return {
-                ...baseItem,
-                quantity_kg: item.packetQuantity * 0.2,
-                total_price: item.packetQuantity * item.packetPrice,
-                is_packet_item: true,
-                packet_quantity: item.packetQuantity,
-                price_per_packet: item.packetPrice,
-                price_per_kg: BHAKARWADI_PRICE_MIN,
-              }
-            } else {
-              return {
-                ...baseItem,
-                quantity_kg: item.quantity,
-                total_price: item.quantity * item.price,
-                is_packet_item: false,
-                packet_quantity: 0,
-                price_per_packet: 0,
-                price_per_kg: item.price,
-              }
-            }
-          }),
-          ...validFulvadiItems.map((item) => {
-            const baseItem = {
-              order_id: order.id,
-              khakhra_type: item.type,
-            }
-
-            if (item.sellBy === "packet" && item.packetQuantity && item.packetPrice) {
-              return {
-                ...baseItem,
-                quantity_kg: item.packetQuantity * 0.5,
-                total_price: item.packetQuantity * item.packetPrice,
-                is_packet_item: true,
-                packet_quantity: item.packetQuantity,
-                price_per_packet: item.packetPrice,
-                price_per_kg: 0,
-              }
-            } else {
-              return {
-                ...baseItem,
-                quantity_kg: item.quantity,
-                total_price: item.quantity * item.price,
-                is_packet_item: false,
-                packet_quantity: 0,
-                price_per_packet: 0,
-                price_per_kg: item.price,
-              }
-            }
-          }),
-          ...validSejwanItems.map((item) => {
-            const sejwanType = KHAKHRA_TYPES.find((t) => t.name === item.type && t.category === "sejwan")
-            const packetWeight = (sejwanType as any)?.packetWeight ?? 0.2
-            return {
-              order_id: order.id,
-              khakhra_type: item.type,
-              quantity_kg: (item.packetQuantity || 0) * packetWeight,
-              total_price: (item.packetQuantity || 0) * (item.packetPrice || 0),
-              is_packet_item: true,
-              packet_quantity: item.packetQuantity || 0,
-              price_per_packet: item.packetPrice || 0,
-              price_per_kg: 0,
-            }
-          }),
-          ...validMathiyaItems.map((item) => ({
-            order_id: order.id,
-            khakhra_type: item.type,
-            quantity_kg: (item.packetQuantity || 0) * 0.2,
-            total_price: (item.packetQuantity || 0) * (item.packetPrice || 0),
-            is_packet_item: true,
-            packet_quantity: item.packetQuantity || 0,
-            price_per_packet: item.packetPrice || 0,
-            price_per_kg: 0,
-          })),
-        ]
-
-        const { error: itemsError } = await supabase.from("khakhra_items").insert(allItemsToInsert)
-
-        if (itemsError) throw itemsError
-      }
-
-      try {
-        const existing = await findCustomerByShopAndCity(shopName, city)
-        if (!existing) {
-          await addCustomer({
-            shop_name: shopName,
-            city,
-            address: address || null,
-            phone: null,
-          })
-        }
-      } catch (e) {
-        console.error("Customer directory sync skipped:", e)
-      }
+        address,
+        items: orderItemsInput
+      })
 
       toast({
         title: "Success",
-        description: `Order created successfully! Total: ₹${totalAmount}`,
+        description: `Order created successfully! Total: ₹${calculateTotal()}`,
       })
-      resetForm()
+
+      // Reset
+      setShopName("")
+      setAddress("")
+      setCity("")
+      setItems([])
       setOpen(false)
       onOrderCreated?.()
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("orders:refresh"))
-      }
-    } catch (error) {
-      const msg = getSupabaseErrorMessage(error)
-      console.error("Error creating order:", msg, error)
+    } catch (error: any) {
+      console.error(error)
       toast({
         title: "Error",
-        description: msg,
+        description: error.message || "Failed to create order",
         variant: "destructive",
       })
     } finally {
@@ -674,759 +179,173 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Order</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Customer Details */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Customer Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="shopName">Shop Name *</Label>
-                <CustomerSearchInput
-                  id="shopName"
-                  value={shopName}
-                  onChange={setShopName}
-                  onCustomerSelect={(customer) => {
-                    setShopName(customer.shop_name)
-                    setCity(customer.city)
-                    setAddress(customer.address ?? "")
-                  }}
-                  placeholder="Enter shop name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="city">City *</Label>
-                <Select value={city} onValueChange={setCity} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select city" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CITIES.map((cityOption) => (
-                      <SelectItem key={cityOption} value={cityOption}>
-                        {cityOption}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="address">Address *</Label>
-              <Textarea
-                id="address"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Enter complete address"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Original Patra Option */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Patra Option</h3>
-            <div className="flex items-center space-x-2">
-              <Switch id="wantsPatra" checked={wantsPatra} onCheckedChange={setWantsPatra} />
-              <Label htmlFor="wantsPatra">
-                Customer wants Patra (₹{PATRA_PRICE_MIN}-₹{PATRA_PRICE_MAX} per packet)
-              </Label>
-            </div>
-            {wantsPatra && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end mt-4">
+        
+        {catalogLoading ? (
+           <div className="py-8 text-center text-muted-foreground">Loading catalog...</div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Customer Details */}
+            <div className="space-y-4 bg-muted/30 p-4 rounded-lg border">
+              <h3 className="text-lg font-medium">Customer Details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="patraPackets">Number of packets *</Label>
-                  <Input
-                    id="patraPackets"
-                    type="number"
-                    min="1"
-                    value={patraPackets}
-                    onChange={(e) => setPatraPackets(Number.parseInt(e.target.value) || 0)}
-                    placeholder="0"
-                    required={wantsPatra}
+                  <Label htmlFor="shopName">Shop Name *</Label>
+                  <CustomerSearchInput
+                    id="shopName"
+                    value={shopName}
+                    onChange={setShopName}
+                    onCustomerSelect={(customer) => {
+                      setShopName(customer.shop_name)
+                      setCity(customer.city)
+                      setAddress(customer.address ?? "")
+                    }}
+                    placeholder="Enter shop name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="patraPrice">Price per packet</Label>
-                  <Select
-                    value={patraPrice.toString()}
-                    onValueChange={(value) => setPatraPrice(Number.parseInt(value))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Label htmlFor="city">City *</Label>
+                  <Select value={city} onValueChange={setCity} required>
+                    <SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger>
                     <SelectContent>
-                      {Array.from({ length: PATRA_PRICE_MAX - PATRA_PRICE_MIN + 1 }, (_, i) => PATRA_PRICE_MIN + i).map(
-                        (price) => (
-                          <SelectItem key={price} value={price.toString()}>
-                            ₹{price}
-                          </SelectItem>
-                        ),
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Total</Label>
-                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                    ₹{patraPackets * patraPrice}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Sejwan Spring Viti (new snack category) */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Sejwan Spring Viti (Snack)</h3>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="wantsSejwan"
-                checked={wantsSejwan}
-                onCheckedChange={(checked) => {
-                  setWantsSejwan(checked)
-                  if (checked && sejwanItems.length === 0) {
-                    setSejwanItems([{ type: "", packetQuantity: 0, packetPrice: PATRA_1KG_PRICE_MIN }])
-                  }
-                }}
-              />
-              <Label htmlFor="wantsSejwan">
-                Customer wants Sejwan Spring Viti (1kg ₹{PATRA_1KG_PRICE_MIN}-{PATRA_1KG_PRICE_MAX}, 200g ₹{PATRA_200G_PRICE_MIN}-{PATRA_200G_PRICE_MAX})
-              </Label>
-            </div>
-            {wantsSejwan && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">Add Sejwan Spring Viti 1kg or 200g packs</p>
-                  <Button type="button" onClick={addSejwanItem} size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Sejwan
-                  </Button>
-                </div>
-                {sejwanItems.map((item, index) => {
-                  const sejwanTypes = KHAKHRA_TYPES.filter((t) => t.category === "sejwan")
-                  const selectedSejwan = sejwanTypes.find((t) => t.name === item.type)
-                  const priceRange = selectedSejwan ? getPriceRange(selectedSejwan, true) : []
-
-                  return (
-                    <div
-                      key={index}
-                      className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 p-3 border rounded-lg items-end"
-                    >
-                      <div className="space-y-2">
-                        <Label>Pack type</Label>
-                        <Select
-                          value={item.type}
-                          onValueChange={(value) => updateSejwanItem(index, "type", value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select pack" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {sejwanTypes.map((type) => (
-                              <SelectItem key={type.name} value={type.name}>
-                                {type.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {selectedSejwan && (
-                        <div className="space-y-2">
-                          <Label>Price per pack</Label>
-                          <Select
-                            value={item.packetPrice?.toString() ?? ""}
-                            onValueChange={(value) => updateSejwanItem(index, "packetPrice", Number.parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {priceRange.map((price) => (
-                                <SelectItem key={price} value={price.toString()}>
-                                  ₹{price}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <Label>Quantity</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={item.packetQuantity || 0}
-                          onChange={(e) =>
-                            updateSejwanItem(index, "packetQuantity", Number.parseInt(e.target.value) || 0)
-                          }
-                          placeholder="0"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Total</Label>
-                        <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                          ₹{calculateSejwanItemTotal(item)}
-                        </div>
-                      </div>
-
-                      {sejwanItems.length >= 1 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeSejwanItem(index)}
-                          className="col-span-full sm:col-span-1"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Mathiya Puri */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Mathiya Puri</h3>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="wantsMathiya"
-                checked={wantsMathiya}
-                onCheckedChange={(checked) => {
-                  setWantsMathiya(checked)
-                  if (checked && mathiyaItems.length === 0) {
-                    setMathiyaItems([{ type: "", packetQuantity: 0, packetPrice: 42 }])
-                  }
-                }}
-              />
-              <Label htmlFor="wantsMathiya">Customer wants Mathiya Puri (200gm packets)</Label>
-            </div>
-            {wantsMathiya && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">Mini or Moti — set selling price per packet</p>
-                  <Button type="button" onClick={addMathiyaItem} size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add line
-                  </Button>
-                </div>
-                {mathiyaItems.map((item, index) => {
-                  const mathiyaTypes = KHAKHRA_TYPES.filter((t) => t.category === "mathiyaPuri")
-                  const selected = mathiyaTypes.find((t) => t.name === item.type)
-                  const mrp = selected && "mrp" in selected ? (selected as { mrp: number }).mrp : undefined
-                  const cost = selected?.basePacketCost
-
-                  return (
-                    <div
-                      key={index}
-                      className="grid grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-2 md:grid-cols-6 md:items-end"
-                    >
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>Product</Label>
-                        <Select value={item.type} onValueChange={(value) => updateMathiyaItem(index, "type", value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select variety" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {mathiyaTypes.map((type) => (
-                              <SelectItem key={type.name} value={type.name}>
-                                {type.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Packets</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={item.packetQuantity || 0}
-                          onChange={(e) =>
-                            updateMathiyaItem(index, "packetQuantity", Number.parseInt(e.target.value) || 0)
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Price / packet (₹)</Label>
-                        <Input
-                          type="number"
-                          min={selected?.basePacketPrice ?? 42}
-                          max={selected?.maxPacketPrice ?? 50}
-                          step={1}
-                          value={item.packetPrice || ""}
-                          onChange={(e) =>
-                            updateMathiyaItem(index, "packetPrice", Number.parseFloat(e.target.value) || 0)
-                          }
-                        />
-                        {selected && mrp != null && cost != null && (
-                          <p className="text-xs text-muted-foreground">
-                            MRP: ₹{mrp.toLocaleString("en-IN")} | Our cost: ₹{cost.toLocaleString("en-IN")}
-                          </p>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Line total</Label>
-                        <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm">
-                          ₹{calculateMathiyaItemTotal(item).toLocaleString("en-IN")}
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Est. profit</Label>
-                        <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
-                          ₹{mathiyaProfitPreview(item).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                      {mathiyaItems.length >= 1 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="md:col-span-6"
-                          onClick={() => removeMathiyaItem(index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Rajasthani Chikki Option</h3>
-            <div className="flex items-center space-x-2">
-              <Switch id="wantsChikki" checked={wantsChikki} onCheckedChange={setWantsChikki} />
-              <Label htmlFor="wantsChikki">
-                Customer wants Chikki (₹{CHIKKI_PRICE_MIN}-₹{CHIKKI_PRICE_MAX} per 200gm packet, MRP ₹{CHIKKI_MRP})
-              </Label>
-            </div>
-            {wantsChikki && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="chikkiPackets">Number of packets *</Label>
-                  <Input
-                    id="chikkiPackets"
-                    type="number"
-                    min="1"
-                    value={chikkiPackets}
-                    onChange={(e) => setChikkiPackets(Number.parseInt(e.target.value) || 0)}
-                    placeholder="0"
-                    required={wantsChikki}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="chikkiPrice">Price per packet</Label>
-                  <Select
-                    value={chikkiPrice.toString()}
-                    onValueChange={(value) => setChikkiPrice(Number.parseInt(value))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from(
-                        { length: CHIKKI_PRICE_MAX - CHIKKI_PRICE_MIN + 1 },
-                        (_, i) => CHIKKI_PRICE_MIN + i,
-                      ).map((price) => (
-                        <SelectItem key={price} value={price.toString()}>
-                          ₹{price}
-                        </SelectItem>
+                      {CITIES.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Total</Label>
-                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                    ₹{chikkiPackets * chikkiPrice}
-                  </div>
-                </div>
               </div>
-            )}
-          </div>
-
-          {/* Bhakarwadi Option */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Bhakarwadi Option</h3>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="wantsBhakarwadi"
-                checked={wantsBhakarwadi}
-                onCheckedChange={(checked) => {
-                  setWantsBhakarwadi(checked)
-                  if (checked && bhakarwadiItems.length === 0) {
-                    setBhakarwadiItems([{ type: "", quantity: 0, price: BHAKARWADI_PACKET_PRICE, sellBy: "packet" }])
-                  }
-                }}
-              />
-              <Label htmlFor="wantsBhakarwadi">Customer wants Bhakarwadi (₹60 per packet or ₹160-200 per kg)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="address">Address *</Label>
+                <Textarea
+                  id="address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Enter complete address"
+                  required
+                />
+              </div>
             </div>
-            {wantsBhakarwadi && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">Add Bhakarwadi items with flexible pricing</p>
-                  <Button type="button" onClick={addBhakarwadiItem} size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Bhakarwadi
-                  </Button>
-                </div>
-                {bhakarwadiItems.map((item, index) => {
-                  const bhakarwadiTypes = KHAKHRA_TYPES.filter((t) => t.category === "bhakarwadi")
+
+            {/* Dynamic Items */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium">Order Items</h3>
+                <div className="text-lg font-bold">Total: ₹{calculateTotal().toLocaleString()}</div>
+              </div>
+
+              <div className="space-y-3">
+                {items.map((item, index) => {
+                  const selectedCat = catalog.find(c => c.id === item.categoryId)
+                  const selectedProd = selectedCat?.products.find((p: any) => p.id === item.productId)
+                  const selectedVariant = selectedProd?.variants.find((v: any) => v.id === item.variantId)
+                  const pricing = selectedVariant?.pricingRules?.[0]
+
+                  let priceHint = ""
+                  if (pricing) {
+                     priceHint = `Min: ₹${pricing.minSellingPrice || pricing.costPrice}`
+                     if (pricing.maxSellingPrice) priceHint += ` | Max: ₹${pricing.maxSellingPrice}`
+                  }
 
                   return (
-                    <div
-                      key={index}
-                      className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 p-3 border rounded-lg items-end"
-                    >
-                      <div className="space-y-2">
-                        <Label>Bhakarwadi Type</Label>
-                        <Select value={item.type} onValueChange={(value) => updateBhakarwadiItem(index, "type", value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
+                    <div key={item.uiId} className="flex flex-col md:flex-row items-end gap-3 p-3 border rounded-lg bg-card">
+                      <div className="w-full md:w-48 space-y-2">
+                        <Label>Category</Label>
+                        <Select value={item.categoryId} onValueChange={(v) => updateItem(item.uiId, "categoryId", v)}>
+                          <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
                           <SelectContent>
-                            {bhakarwadiTypes.map((type) => (
-                              <SelectItem key={type.name} value={type.name}>
-                                {type.name}
-                              </SelectItem>
+                            {catalog.map(c => (
+                              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label>Sell By</Label>
-                        <Select
-                          value={item.sellBy}
-                          onValueChange={(value) => updateBhakarwadiItem(index, "sellBy", value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                      <div className="w-full md:w-48 space-y-2">
+                        <Label>Product</Label>
+                        <Select disabled={!item.categoryId} value={item.productId} onValueChange={(v) => updateItem(item.uiId, "productId", v)}>
+                          <SelectTrigger><SelectValue placeholder="Product" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="packet">Per Packet (₹60)</SelectItem>
-                            <SelectItem value="kg">Per Kg (₹160-200)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {item.sellBy === "kg" && (
-                        <div className="space-y-2">
-                          <Label>Price per kg</Label>
-                          <Select
-                            value={item.price?.toString() || ""}
-                            onValueChange={(value) => updateBhakarwadiItem(index, "price", Number.parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select price" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Array.from({ length: 41 }, (_, i) => 160 + i).map((price) => (
-                                <SelectItem key={price} value={price.toString()}>
-                                  ₹{price}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <Label>{item.sellBy === "packet" ? "Packets" : "Quantity (kg)"}</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step={item.sellBy === "packet" ? "1" : "0.5"}
-                          value={item.sellBy === "packet" ? item.packetQuantity || 0 : item.quantity}
-                          onChange={(e) => {
-                            const value =
-                              item.sellBy === "packet"
-                                ? Number.parseInt(e.target.value) || 0
-                                : Number.parseFloat(e.target.value) || 0
-                            updateBhakarwadiItem(index, item.sellBy === "packet" ? "packetQuantity" : "quantity", value)
-                          }}
-                          placeholder="0"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Total</Label>
-                        <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                          ₹{calculateBhakarwadiItemTotal(item)}
-                        </div>
-                      </div>
-
-                      {bhakarwadiItems.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeBhakarwadiItem(index)}
-                          className="col-span-full sm:col-span-1"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Fulvadi Option */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Fulvadi Option</h3>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="wantsFulvadi"
-                checked={wantsFulvadi}
-                onCheckedChange={(checked) => {
-                  setWantsFulvadi(checked)
-                  if (checked && fulvadiItems.length === 0) {
-                    setFulvadiItems([{ type: "", quantity: 0, price: 90, sellBy: "packet" }])
-                  }
-                }}
-              />
-              <Label htmlFor="wantsFulvadi">Customer wants Fulvadi (₹90 per 500g packet)</Label>
-            </div>
-            {wantsFulvadi && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">Add Fulvadi items (fixed ₹90 per 500g packet)</p>
-                  <Button type="button" onClick={addFulvadiItem} size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Fulvadi
-                  </Button>
-                </div>
-                {fulvadiItems.map((item, index) => {
-                  const fulvadiTypes = KHAKHRA_TYPES.filter((t) => t.category === "fulvadi")
-
-                  return (
-                    <div
-                      key={index}
-                      className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 p-3 border rounded-lg items-end"
-                    >
-                      <div className="space-y-2">
-                        <Label>Fulvadi Type</Label>
-                        <Select value={item.type} onValueChange={(value) => updateFulvadiItem(index, "type", value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {fulvadiTypes.map((type) => (
-                              <SelectItem key={type.name} value={type.name}>
-                                {type.name}
-                              </SelectItem>
+                            {selectedCat?.products.map((p: any) => (
+                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label>Packets (500g each)</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={item.packetQuantity || 0}
-                          onChange={(e) => {
-                            const value = Number.parseInt(e.target.value) || 0
-                            updateFulvadiItem(index, "packetQuantity", value)
-                          }}
-                          placeholder="0"
+                      <div className="w-full md:w-32 space-y-2">
+                        <Label>Variant</Label>
+                        <Select disabled={!item.productId} value={item.variantId} onValueChange={(v) => updateItem(item.uiId, "variantId", v)}>
+                          <SelectTrigger><SelectValue placeholder="Size/Type" /></SelectTrigger>
+                          <SelectContent>
+                            {selectedProd?.variants.map((v: any) => (
+                              <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="w-full md:w-24 space-y-2">
+                        <Label>Quantity</Label>
+                        <Input 
+                          type="number" 
+                          min={1} 
+                          value={item.quantity || ""} 
+                          onChange={(e) => updateItem(item.uiId, "quantity", Number(e.target.value))} 
                         />
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="w-full md:w-32 space-y-2">
+                        <Label className="flex justify-between">
+                          <span>Price/Unit</span>
+                        </Label>
+                        <Input 
+                          type="number" 
+                          value={item.sellingPrice || ""} 
+                          onChange={(e) => updateItem(item.uiId, "sellingPrice", Number(e.target.value))} 
+                        />
+                        {priceHint && <p className="text-[10px] text-muted-foreground whitespace-nowrap">{priceHint}</p>}
+                      </div>
+
+                      <div className="w-full md:w-24 space-y-2">
                         <Label>Total</Label>
-                        <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                          ₹{calculateFulvadiItemTotal(item)}
+                        <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm font-medium">
+                          ₹{item.quantity * item.sellingPrice}
                         </div>
                       </div>
 
-                      {fulvadiItems.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeFulvadiItem(index)}
-                          className="col-span-full sm:col-span-1"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-destructive mb-1 md:mb-0 md:h-10 shrink-0" 
+                        onClick={() => removeItem(item.uiId)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   )
                 })}
               </div>
-            )}
-          </div>
 
-          {/* Khakhra Selection */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium">Khakhra Selection (Optional)</h3>
-              <Button type="button" onClick={addKhakhraItem} size="sm">
-                <Plus className="h-4 w-4 mr-1" />
-                Add Item
+              <Button type="button" variant="outline" onClick={() => addItem()} className="w-full mt-2">
+                <Plus className="h-4 w-4 mr-2" /> Add Item
               </Button>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Add Khakhra items with flexible pricing, or leave empty for Patra-only orders
-            </p>
-            {khakhraItems.map((item, index) => {
-              const selectedType = KHAKHRA_TYPES.find((t) => t.name === item.type)
-              const canSellByPacket = selectedType?.sellBy === "both"
-              const priceRange = selectedType ? getPriceRange(selectedType, item.sellBy === "packet") : []
 
-              return (
-                <div
-                  key={index}
-                  className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 p-3 border rounded-lg items-end"
-                >
-                  <div className="col-span-full lg:col-span-2 space-y-2">
-                    <Label>Khakhra Type</Label>
-                    <Select value={item.type} onValueChange={(value) => updateKhakhraItem(index, "type", value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select khakhra type (optional)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {KHAKHRA_TYPES.filter(
-                          (type) =>
-                            type.category !== "bhakarwadi" &&
-                            type.category !== "fulvadi" &&
-                            type.category !== "sejwan" &&
-                            type.category !== "mathiyaPuri",
-                        ).map((type) => (
-                          <SelectItem key={type.name} value={type.name}>
-                            {type.name} - ₹{type.basePrice}
-                            {type.maxPrice > type.basePrice ? `-${type.maxPrice}` : ""}/kg
-                            {(type.category === "bhakri" || type.category === "farali") &&
-                              ` (₹${type.basePacketPrice}-${type.maxPacketPrice}/packet)`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {canSellByPacket && item.type && (
-                    <div className="space-y-2">
-                      <Label>Sell By</Label>
-                      <Select
-                        value={item.sellBy}
-                        onValueChange={(value: "kg" | "packet") => updateKhakhraItem(index, "sellBy", value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="kg">Per Kg</SelectItem>
-                          <SelectItem value="packet">Per Packet</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {selectedType && (
-                    <div className="space-y-2">
-                      <Label>Price</Label>
-                      <Select
-                        value={(item.sellBy === "packet" ? item.packetPrice : item.price)?.toString() || ""}
-                        onValueChange={(value) =>
-                          updateKhakhraItem(
-                            index,
-                            item.sellBy === "packet" ? "packetPrice" : "price",
-                            Number.parseInt(value),
-                          )
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {priceRange.map((price) => (
-                            <SelectItem key={price} value={price.toString()}>
-                              ₹{price}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label>{item.sellBy === "packet" ? "Packets" : "Quantity (kg)"}</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step={item.sellBy === "packet" ? "1" : "0.5"}
-                      value={item.sellBy === "packet" ? item.packetQuantity || 0 : item.quantity}
-                      onChange={(e) => {
-                        const value =
-                          item.sellBy === "packet"
-                            ? Number.parseInt(e.target.value) || 0
-                            : Number.parseFloat(e.target.value) || 0
-                        updateKhakhraItem(index, item.sellBy === "packet" ? "packetQuantity" : "quantity", value)
-                      }}
-                      placeholder="0"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Total</Label>
-                    <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-sm">
-                      ₹{calculateItemTotal(item)}
-                    </div>
-                  </div>
-
-                  {khakhraItems.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeKhakhraItem(index)}
-                      className="col-span-full sm:col-span-1"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Order Summary */}
-          <div className="border-t pt-4 space-y-2">
-            <div className="flex items-center justify-between text-lg font-semibold">
-              <span>Order Total:</span>
-              <div className="flex items-center gap-1">
-                <IndianRupee className="h-4 w-4" />
-                <span>{calculateTotal()}</span>
-              </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Creating..." : "Create Order"}
+              </Button>
             </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Order"}
-            </Button>
-          </div>
-        </form>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   )

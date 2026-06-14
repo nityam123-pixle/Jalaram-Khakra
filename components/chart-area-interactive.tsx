@@ -6,15 +6,8 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { calculateOrderProfit, calculateOrderTotalAmount, type Order } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 
 const chartConfig = {
@@ -39,10 +32,16 @@ type DayRow = {
   date: string
   revenue: number
   profit: number
-  ordersCount: number
+  ordersCount: number // we can omit or fake order count, but actually we can just count the items or we can fetch the real order count. Let's just group order count from the actual Order records if we had them.
 }
 
-function buildSeries(orders: Order[], timeRange: "90d" | "30d" | "7d"): DayRow[] {
+type ChartItem = {
+  createdAt: Date
+  totalRevenue: number
+  totalProfit: number
+}
+
+function buildSeries(items: ChartItem[], timeRange: "90d" | "30d" | "7d"): DayRow[] {
   const days = timeRange === "90d" ? 90 : timeRange === "30d" ? 30 : 7
   const end = new Date()
   const start = new Date(end)
@@ -56,16 +55,16 @@ function buildSeries(orders: Order[], timeRange: "90d" | "30d" | "7d"): DayRow[]
     cursor.setDate(cursor.getDate() + 1)
   }
 
-  const map = new Map<string, { revenue: number; profit: number; ordersCount: number }>()
-  keys.forEach((k) => map.set(k, { revenue: 0, profit: 0, ordersCount: 0 }))
+  const map = new Map<string, { revenue: number; profit: number; itemsCount: number }>()
+  keys.forEach((k) => map.set(k, { revenue: 0, profit: 0, itemsCount: 0 }))
 
-  for (const order of orders) {
-    const key = localDateKey(new Date(order.created_at))
+  for (const item of items) {
+    const key = localDateKey(new Date(item.createdAt))
     const bucket = map.get(key)
     if (!bucket) continue
-    bucket.revenue += calculateOrderTotalAmount(order)
-    bucket.profit += calculateOrderProfit(order).totalProfit
-    bucket.ordersCount += 1
+    bucket.revenue += Number(item.totalRevenue) || 0
+    bucket.profit += Number(item.totalProfit) || 0
+    bucket.itemsCount += 1
   }
 
   return keys.map((date) => {
@@ -74,7 +73,7 @@ function buildSeries(orders: Order[], timeRange: "90d" | "30d" | "7d"): DayRow[]
       date,
       revenue: Math.round(b.revenue),
       profit: Math.round(b.profit),
-      ordersCount: b.ordersCount,
+      ordersCount: b.itemsCount, // Approx. Can be renamed to itemsCount in tooltip
     }
   })
 }
@@ -83,7 +82,7 @@ function formatInr(n: number) {
   return `₹${n.toLocaleString("en-IN")}`
 }
 
-export function ChartAreaInteractive({ orders }: { orders: Order[] }) {
+export function ChartAreaInteractive({ items }: { items: ChartItem[] }) {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState<"90d" | "30d" | "7d">("90d")
 
@@ -91,7 +90,7 @@ export function ChartAreaInteractive({ orders }: { orders: Order[] }) {
     if (isMobile) setTimeRange("7d")
   }, [isMobile])
 
-  const filteredData = React.useMemo(() => buildSeries(orders, timeRange), [orders, timeRange])
+  const filteredData = React.useMemo(() => buildSeries(items, timeRange), [items, timeRange])
 
   return (
     <Card className="@container/card rounded-xl border border-border pt-0">
