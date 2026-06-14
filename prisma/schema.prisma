@@ -130,64 +130,73 @@ model PricingHistory {
 }
 
 // ----------------------------------------------------------------------------
-// EXISTING TABLES (Extended)
+// EXISTING TABLES (Introspected for byte-for-byte matching)
 // ----------------------------------------------------------------------------
 
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model Customer {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   shop_name  String
   city       String
   address    String?
   phone      String?
-  created_at DateTime @default(now())
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @default(now()) @db.Timestamptz(6)
 
-  // NOTE: Order table already references shop_name and city (historically).
-  // Should eventually have relation here, but keeping legacy structure for now.
-
+  @@unique([shop_name, city])
+  @@index([shop_name(ops: raw("gin_trgm_ops"))], map: "customers_shop_name_trgm_idx", type: Gin)
   @@map("customers")
 }
 
 model Order {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shop_name        String
-  address          String
-  city             String
-  status           String   @default("pending") // Supports: pending, confirmed, processing, shipped, delivered, cancelled, overdue
-  total_khakhra_kg Float    @default(0)
-  total_amount     Float    @default(0)
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
-
-  // Legacy columns (To be deprecated)
-  wants_patra              Boolean? @default(false)
-  patra_packets            Int?     @default(0)
-  patra_price_per_packet   Float?
-  wants_fulvadi            Boolean? @default(false)
-  fulvadi_packets          Int?     @default(0)
-  fulvadi_price_per_packet Float?
-  wants_chikki             Boolean? @default(false)
-  chikki_packets           Int?     @default(0)
-  chikki_price_per_packet  Float?
-
+  id                          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shop_name                   String
+  address                     String
+  city                        String
+  status                      String        @default("pending") // Supports: pending, confirmed, processing, shipped, delivered, cancelled, overdue
+  wants_patra                 Boolean?      @default(false)
+  patra_packets               Int?          @default(0)
+  total_khakhra_kg            Decimal?      @default(0) @db.Decimal(10, 2)
+  created_at                  DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime?     @default(now()) @updatedAt @db.Timestamptz(6)
+  due_date                    DateTime?     @db.Date
+  total_amount                Decimal?      @default(0) @db.Decimal(10, 2)
+  patra_price_per_packet      Decimal?      @default(75) @db.Decimal(10, 2)
+  wants_bhakarwadi            Boolean?      @default(false)
+  bhakarwadi_packets          Int?          @default(0)
+  bhakarwadi_price_per_packet Decimal?      @default(60) @db.Decimal(10, 2)
+  wants_fulvadi               Boolean?      @default(false)
+  fulvadi_packets             Int?          @default(0)
+  fulvadi_price_per_packet    Int?          @default(90)
+  wants_chikki                Boolean?      @default(false)
+  chikki_packets              Int?          @default(0)
+  chikki_price_per_packet     Int?          @default(31)
+  
   // Relations
-  items OrderItem[]
+  khakhra_items               KhakhraItem[]
+  items                       OrderItem[]
 
+  @@index([city], map: "idx_orders_city")
+  @@index([created_at], map: "idx_orders_created_at")
+  @@index([status], map: "idx_orders_status")
   @@map("orders")
 }
 
-// Legacy table (to be migrated and dropped)
 model KhakhraItem {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id         String   @db.Uuid
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  order_id         String?   @db.Uuid
   khakhra_type     String
-  quantity_kg      Float
-  price_per_kg     Float
-  total_price      Float
-  created_at       DateTime @default(now())
-  is_packet_item   Boolean? @default(false)
-  packet_quantity  Int?     @default(0)
-  price_per_packet Float?   @default(0)
+  quantity_kg      Decimal   @db.Decimal(10, 2)
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+  price_per_kg     Decimal?  @default(200) @db.Decimal(10, 2)
+  total_price      Decimal?  @default(0) @db.Decimal(10, 2)
+  is_packet_item   Boolean?  @default(false)
+  packet_quantity  Int?      @default(0)
+  price_per_packet Decimal?  @default(0) @db.Decimal(10, 2)
+  
+  orders           Order?    @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([order_id], map: "idx_khakhra_items_order_id")
   @@map("khakhra_items")
 }
 
