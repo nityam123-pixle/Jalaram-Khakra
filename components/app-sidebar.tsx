@@ -4,6 +4,7 @@ import {
   BarChart3,
   LayoutDashboard,
   Package2,
+  BookOpen,
   Settings2,
   ShoppingCart,
   Users,
@@ -29,6 +30,7 @@ const navMain = [
   { title: "All Orders", url: "/orders", icon: ShoppingCart },
   { title: "Summary", url: "/summary", icon: BarChart3 },
   { title: "Products", url: "/products", icon: Package2 },
+  { title: "Catalogue", url: "/catalogue", icon: BookOpen },
   { title: "Customers", url: "/customers", icon: Users },
   { title: "Inventory", url: "/inventory", icon: Warehouse },
 ]

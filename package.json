@@ -47,6 +47,7 @@
     "@supabase/supabase-js": "latest",
     "@tanstack/react-table": "^8.21.3",
     "autoprefixer": "^10.4.20",
+    "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
@@ -71,6 +72,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",

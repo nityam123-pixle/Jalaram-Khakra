@@ -83,9 +83,9 @@ export default async function DashboardPage() {
           ) : (
             <div className="divide-y divide-border">
               {recent.map((order) => {
-                const amount = order.total_amount || 0
-                const label = previewLabel(order)
-                const letter = label.charAt(0).toUpperCase()
+                const amount = (order.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
+                const label = order.items?.[0]?.categoryName || "Mixed"
+                const letter = (order.customer?.shop_name || order.shop_name || "?").charAt(0).toUpperCase()
                 const dateStr = new Date(order.created_at).toLocaleDateString("en-IN", {
                   day: "numeric",
                   month: "short",
@@ -100,7 +100,7 @@ export default async function DashboardPage() {
                       {letter}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium leading-none">{order.shop_name}</p>
+                      <p className="truncate font-medium leading-none">{order.customer?.shop_name || order.shop_name}</p>
                       <p className="mt-1 truncate text-xs text-muted-foreground">
                         {label} · {order.city}
                       </p>

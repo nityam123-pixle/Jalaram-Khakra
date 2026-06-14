@@ -23,7 +23,8 @@ export async function getFullCatalog() {
             where: { isActive: true },
             orderBy: { name: "asc" },
             include: {
-              pricingRules: true
+              pricingRules: true,
+              product: true
             }
           }
         }
@@ -55,8 +56,54 @@ export async function getProducts(categoryId?: string) {
 }
 
 export async function createProduct(data: { name: string; categoryId: string; isActive: boolean }) {
-  const prod = await prisma.product.create({ data })
+  const slug = data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+  const prod = await prisma.product.create({ data: { ...data, slug } })
   revalidatePath("/products")
+  revalidatePath("/catalogue")
+  return prod
+}
+
+// Create product + variant + pricing in one shot (for the Create Product dialog)
+export async function createProductWithVariant(data: {
+  name: string
+  categoryId: string
+  variantName: string
+  unitType: "KG" | "PACKET" | "BOX"
+  costPrice: number
+  minSellingPrice: number
+  maxSellingPrice: number
+}) {
+  const slug = data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now()
+  
+  const prod = await prisma.product.create({
+    data: {
+      name: data.name,
+      categoryId: data.categoryId,
+      slug,
+      isActive: true,
+      variants: {
+        create: {
+          name: data.variantName,
+          unitType: data.unitType,
+          isActive: true,
+          inventoryTracked: false,
+          pricingRules: {
+            create: {
+              pricingType: data.unitType === 'KG' ? 'RANGE' : 'FIXED',
+              costPrice: data.costPrice,
+              minSellingPrice: data.minSellingPrice,
+              maxSellingPrice: data.maxSellingPrice,
+            }
+          }
+        }
+      }
+    },
+    include: { variants: { include: { pricingRules: true } } }
+  })
+  
+  revalidatePath("/products")
+  revalidatePath("/catalogue")
+  revalidatePath("/orders/new")
   return prod
 }
 
@@ -82,6 +129,32 @@ export async function createVariant(data: {
   const variant = await prisma.productVariant.create({ data })
   revalidatePath("/products")
   return variant
+}
+
+export async function updateVariant(id: string, data: { name: string; sku?: string; weightKg?: number; unitType: any; isActive: boolean; inventoryTracked: boolean }) {
+  const v = await prisma.productVariant.update({ where: { id }, data })
+  revalidatePath("/products")
+  return v
+}
+
+export async function updatePricing(variantId: string, data: { costPrice: number; minSellingPrice: number; maxSellingPrice: number }) {
+  const existing = await prisma.productPricing.findFirst({ where: { variantId } })
+  if (existing) {
+    await prisma.productPricing.update({
+      where: { id: existing.id },
+      data
+    })
+  } else {
+    await prisma.productPricing.create({
+      data: {
+        variantId,
+        ...data,
+        pricingType: "FIXED"
+      }
+    })
+  }
+  revalidatePath("/products")
+  revalidatePath("/orders/new")
 }
 
 // Pricing Rules

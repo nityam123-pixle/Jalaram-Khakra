@@ -141,9 +141,19 @@ model Customer {
   shop_name  String
   city       String
   address    String?
-  phone      String?
-  created_at DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at DateTime? @default(now()) @db.Timestamptz(6)
+  phone                       String?
+  created_at                  DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime? @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Phase 1 Migration Fields
+  lastOrderAt                 DateTime?
+  totalOrders                 Int       @default(0)
+  isArchived                  Boolean   @default(false)
+  
+  mergedIntoCustomerId        String?   @db.Uuid
+  mergedIntoCustomer          Customer? @relation("CustomerMerge", fields: [mergedIntoCustomerId], references: [id])
+  mergedCustomers             Customer[] @relation("CustomerMerge")
+  orders                      Order[]
 
   @@unique([shop_name, city])
   @@index([shop_name(ops: raw("gin_trgm_ops"))], map: "customers_shop_name_trgm_idx", type: Gin)
@@ -155,6 +165,10 @@ model Order {
   shop_name                   String
   address                     String
   city                        String
+  
+  customerId                  String        @db.Uuid
+  customer                    Customer      @relation(fields: [customerId], references: [id])
+
   status                      String        @default("pending") // Supports: pending, confirmed, processing, shipped, delivered, cancelled, overdue
   wants_patra                 Boolean?      @default(false)
   patra_packets               Int?          @default(0)

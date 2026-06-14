@@ -1,38 +1,54 @@
-# Objective
+# P0 Critical Bugs & P1 UI Regressions Implementation Plan
 
-Refactor the New Order and Edit Order UX to align with the new Prisma Catalog architecture, implement a multi-step dynamic wizard, and clean up legacy customer data.
+## Goal
+Halt all feature development to resolve 8 critical release-blocking regressions introduced during the New Order wizard and Edit Order migration.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> To properly "Merge duplicate customer records" and "Move all order references to the master record", we must add a relational link between `Order` and `Customer`. Currently, the `Order` table stores `shop_name`, `address`, and `city` as isolated strings without a direct foreign key to the `Customer` table.
-> **I will add `customerId` to the `Order` table and migrate existing orders to link to their respective customers before proceeding.**
-
-> [!WARNING]
-> Duplicate customers with the *same* shop name but *different* cities (e.g., "SURBHI AMRUT DAIRY FARM" in Savarkundla, Bagasara, and Dhari) might actually be different branch locations rather than accidental duplicates. Please review `reports/customer_merge_report.md` closely before approving their merge into a single master record.
+> This plan addresses production blockers including empty orders, blank detail pages, broken sidebars, and Prisma serialization crashes. Please review the proposed fixes below and approve before execution.
 
 ## Proposed Changes
 
-### Database & Customer Audit (Phase 1)
-- **`prisma/schema.prisma`**: Add `customerId String? @db.Uuid` to `Order` model and a `customer` relation.
-- **Migration & Linking**: Run a data migration to link all 637 existing historical orders to their exact `Customer` record using `(shop_name, city)`.
-- **Customer Merge Utility**: Create a script `scripts/merge-customers.ts` to safely merge the duplicates identified in the audit into master records and reassign the newly linked `customerId` on their orders.
+### P0 Critical Bugs
 
-### UI Overhaul (Phases 2-4)
-- **`app/orders/new/page.tsx`**: Replace with a modern 4-step wizard.
-  - *Step 1*: Dynamic searchable Customer selector. Includes order history panel and 1-click "Use Previous Order" fast reorder.
-  - *Step 2*: Dynamic Catalog selector (Category Chips -> Products -> Variants -> Qty). Live profit/revenue preview based on `ProductPricing`.
-  - *Step 3*: Dedicated Review Order screen with validation checks.
-  - *Step 4*: Animated Success screen using SVG stroke animation and Lottie confetti.
-- **`app/orders/[id]/edit/page.tsx`**: Dedicated Edit Order route built entirely on the new Catalog architecture with an interactive Status timeline and mobile-friendly swipe/tap controls.
-- **Legacy Cleanup**: Systematically remove legacy fields and calculations across the codebase.
+#### 1. Decimal Serialization Crash
+- **Root Cause**: Next.js Server Components cannot pass native Prisma `Decimal` objects (like `total_khakhra_kg`, `total_amount`) to Client Components.
+- **Fix**: Create a server-side serialization wrapper in `app/orders/[id]/edit/page.tsx` and `app/orders/[id]/page.tsx` that explicitly converts all `Decimal` values to `Number` before passing them down to client components.
+
+#### 2. New Order Created With ₹0
+- **Root Cause**: `createOrder()` does not enforce a minimum cart length or revenue threshold, allowing empty configurations to be written to the DB.
+- **Fix**: Update `app/actions/order.ts` to strictly throw an error if `items.length === 0` or `totalAmount <= 0`. Update `step3-review.tsx` to visually block submission under these conditions.
+
+#### 3. View Details Opens Empty Page
+- **Root Cause**: The dynamic route `app/orders/[id]/page.tsx` was never created.
+- **Fix**: Implement `app/orders/[id]/page.tsx` using `getOrderById()`. If the order is missing, render `notFound()`.
+
+#### 4. Patra Price = NaN
+- **Root Cause**: A variant with missing pricing rules throws `NaN` because `Number(undefined)` is evaluated.
+- **Fix**: In `step2-products.tsx`, fallback to `0`. Display "Pricing unavailable" and disable the "Add to Order" button if a valid price cannot be derived.
+
+### P1 Architecture Mistakes
+
+#### 5. Cart Sidebar UX Is Broken
+- **Root Cause**: The sticky sidebar overflows the container.
+- **Fix**: Switch to a unified container. Desktop: 70% Products grid, 30% Order Summary. Tablet: Stacked grid. Mobile: Fixed sticky bottom overlay for cart summary.
+
+#### 6. Replace Existing Flows
+- **Fix**: Fully delete `<EditOrderDialog>` from `app/orders/page.tsx`. Ensure all 'Edit' and 'View' buttons natively navigate to `/orders/[id]/edit` and `/orders/[id]`.
+
+#### 7. Step 2 Product Selection UX Is Wrong
+- **Fix**: Re-engineer the layout for non-technical users. Employ a vertical drill-down: Category Chips → Filtered Product Cards → Filtered Variant Cards → Quantity Selector → Add to Order. Remove all horizontal scrolling.
+
+#### 8. Success Screen Before Validation
+- **Fix**: Ensured by Fix #2. Step 4 will strictly only mount if `createOrder` completes without error.
 
 ## Verification Plan
 
 ### Automated Tests
-- Run `npx tsc --noEmit` and build checks to ensure no type errors remain after removing legacy constants.
+- Run `npx tsc --noEmit` to verify type safety after fixing Decimal serialization.
 
 ### Manual Verification
-- Verify the Customer Merge utility correctly updates `customerId` on orders without deleting the orders.
-- Verify the New Order Wizard successfully creates a dynamic `Order` and `OrderItem` rows mapped to the Prisma Catalog.
-- Ensure the Edit Order page accurately reflects dynamic product data without relying on hardcoded arrays.
+- Attempt to create an order with 0 items; verify it is rejected.
+- Select Patra and ensure `NaN` does not appear.
+- View an order detail page (`/orders/[id]`) and ensure it renders.

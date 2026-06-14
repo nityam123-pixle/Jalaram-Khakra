@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "../../lib/prisma"
+import { serializePrisma } from "../../lib/prisma-serializer"
 
 export async function getDashboardAnalytics() {
   const [totalOrders, pendingOrders, completedOrders] = await Promise.all([
@@ -71,26 +72,28 @@ export async function getOrdersForChart() {
     }
   })
 
-  return items
+  return serializePrisma(items)
 }
 
 export async function getRecentOrders(take = 8) {
-  return prisma.order.findMany({
+  const orders = await prisma.order.findMany({
     take,
     orderBy: { created_at: 'desc' },
     include: {
       items: {
-        take: 1
+        select: { totalRevenue: true, totalProfit: true, productName: true, categoryName: true }
       }
     }
   })
+  return serializePrisma(orders)
 }
 
 export async function getSummaryOrders() {
-  return prisma.order.findMany({
+  const orders = await prisma.order.findMany({
     orderBy: { created_at: 'desc' },
     include: {
       items: true
     }
   })
+  return serializePrisma(orders)
 }

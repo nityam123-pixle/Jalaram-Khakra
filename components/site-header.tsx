@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation"
 import { Plus } from "lucide-react"
 
-import { NewOrderDialog } from "@/components/new-order-dialog"
+import Link from "next/link"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -32,14 +32,12 @@ export function SiteHeader() {
           <h1 className="text-base font-medium tracking-tight">{title}</h1>
         </div>
         <div className="flex items-center gap-1">
-          <NewOrderDialog
-            trigger={
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">New order</span>
-              </Button>
-            }
-          />
+          <Button size="sm" variant="outline" className="gap-1.5" asChild>
+            <Link href="/orders/new">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">New order</span>
+            </Link>
+          </Button>
           <ThemeToggle />
         </div>
       </div>
