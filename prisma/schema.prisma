@@ -141,7 +141,7 @@ model Customer {
   phone      String?
   created_at DateTime @default(now())
 
-  // NOTE: Order table already references shop_name and city (historically). 
+  // NOTE: Order table already references shop_name and city (historically).
   // Should eventually have relation here, but keeping legacy structure for now.
 
   @@map("customers")
