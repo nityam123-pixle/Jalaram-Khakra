@@ -24,6 +24,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useState } from "react"
 
 interface OrderDetailsSheetProps {
   order: any | null
@@ -38,6 +39,8 @@ export function OrderDetailsSheet({
   onOpenChange,
   onStatusChange,
 }: OrderDetailsSheetProps) {
+  const [generatingInvoice, setGeneratingInvoice] = useState(false)
+
   if (!order) return null
 
   // Sum metrics dynamically from items
@@ -59,8 +62,20 @@ export function OrderDetailsSheet({
     })
   }
 
-  const handlePrint = () => {
-    toast.success(`Invoice for Order #${order.id.slice(0, 8).toUpperCase()} sent to printer.`)
+  const handleGenerateInvoice = async () => {
+    setGeneratingInvoice(true)
+    try {
+      const { generateInvoiceForOrder } = await import('@/app/actions/invoice')
+      const inv = await generateInvoiceForOrder(order.id)
+      if (inv?.pdfUrl) {
+        window.open(inv.pdfUrl, '_blank')
+      }
+      toast.success("Invoice generated successfully!")
+    } catch (e: any) {
+      toast.error(e.message || "Failed to generate invoice")
+    } finally {
+      setGeneratingInvoice(false)
+    }
   }
 
   const handleWhatsAppShare = () => {
@@ -221,15 +236,17 @@ export function OrderDetailsSheet({
         {/* Footer Actions */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              className="gap-2 flex-1 min-w-[140px]"
-            >
-              <FileText className="h-4 w-4" />
-              <span>Print Invoice</span>
-            </Button>
+            {order.invoice?.pdfUrl ? (
+              <Button variant="outline" size="sm" asChild className="gap-2 flex-1 min-w-[140px]">
+                <a href={order.invoice.pdfUrl} download={`${order.invoice.invoiceNumber}.pdf`}>
+                  <FileText className="h-4 w-4" /> Download Invoice
+                </a>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={handleGenerateInvoice} disabled={generatingInvoice} className="gap-2 flex-1 min-w-[140px]">
+                <FileText className="h-4 w-4" /> {generatingInvoice ? "Generating..." : "Generate Invoice"}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

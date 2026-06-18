@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { MoreHorizontal, FileText, Edit2, CheckCircle, Trash2, MessageCircle, Eye } from "lucide-react"
 import { toast } from "sonner"
+import { useState } from "react"
 
 interface OrderActionsMenuProps {
   order: any
@@ -24,8 +25,22 @@ export function OrderActionsMenu({
   onStatusChange,
   onDelete
 }: OrderActionsMenuProps) {
-  const handlePrint = () => {
-    toast.success(`Invoice for Order #${order.id.slice(0, 8).toUpperCase()} sent to printer.`)
+  const [generatingInvoice, setGeneratingInvoice] = useState(false)
+
+  const handleGenerateInvoice = async () => {
+    setGeneratingInvoice(true)
+    try {
+      const { generateInvoiceForOrder } = await import('@/app/actions/invoice')
+      const inv = await generateInvoiceForOrder(order.id)
+      if (inv?.pdfUrl) {
+        window.open(inv.pdfUrl, '_blank')
+      }
+      toast.success("Invoice generated successfully!")
+    } catch (e: any) {
+      toast.error(e.message || "Failed to generate invoice")
+    } finally {
+      setGeneratingInvoice(false)
+    }
   }
 
   const handleWhatsAppShare = () => {
@@ -60,10 +75,19 @@ export function OrderActionsMenu({
           </a>
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={handlePrint} className="gap-2 text-xs cursor-pointer">
-          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>Print Invoice</span>
-        </DropdownMenuItem>
+        {order.invoice?.pdfUrl ? (
+          <DropdownMenuItem asChild className="gap-2 text-xs cursor-pointer">
+            <a href={order.invoice.pdfUrl} download={`${order.invoice.invoiceNumber}.pdf`}>
+              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+              <span>Download Invoice</span>
+            </a>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={(e) => { e.preventDefault(); handleGenerateInvoice(); }} disabled={generatingInvoice} className="gap-2 text-xs cursor-pointer">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{generatingInvoice ? "Generating..." : "Generate Invoice"}</span>
+          </DropdownMenuItem>
+        )}
 
         <DropdownMenuItem onClick={handleWhatsAppShare} className="gap-2 text-xs cursor-pointer">
           <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />

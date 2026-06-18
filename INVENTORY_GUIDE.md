@@ -159,6 +159,7 @@ It does **not** represent a total weight in kilograms or boxes across all varian
 
 ### How it works with your specific variants:
 
+
 1. **For a "200g Packet" variant:**
    * If you set the Reorder Point to  **10** , it means the system will trigger a low-stock alert when you have **10 packets of 200g** left in stock.
 2. **For a "1kg Box" variant:**

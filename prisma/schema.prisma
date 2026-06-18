@@ -30,6 +30,13 @@ enum OrderStatus {
   pending // Legacy lowercase status support
 }
 
+enum InvoicePaymentStatus {
+  PAID
+  PENDING
+  PARTIAL
+  CANCELLED
+}
+
 // ----------------------------------------------------------------------------
 // NEW CATALOG SYSTEM
 // ----------------------------------------------------------------------------
@@ -158,6 +165,7 @@ model Customer {
   mergedIntoCustomer          Customer? @relation("CustomerMerge", fields: [mergedIntoCustomerId], references: [id])
   mergedCustomers             Customer[] @relation("CustomerMerge")
   orders                      Order[]
+  invoices                    Invoice[]
 
   @@unique([shop_name, city])
   @@index([shop_name(ops: raw("gin_trgm_ops"))], map: "customers_shop_name_trgm_idx", type: Gin)
@@ -195,6 +203,7 @@ model Order {
   // Relations
   khakhra_items               KhakhraItem[]
   items                       OrderItem[]
+  invoice                     Invoice?
 
   @@index([city], map: "idx_orders_city")
   @@index([created_at], map: "idx_orders_created_at")
@@ -394,4 +403,37 @@ model StockLedger {
   @@index([createdAt])
   @@index([action])
   @@map("stock_ledger")
+}
+
+// ----------------------------------------------------------------------------
+// INVOICE SYSTEM
+// ----------------------------------------------------------------------------
+
+model Invoice {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceNumber String               @unique
+  orderId       String?              @unique @db.Uuid
+  customerId    String               @db.Uuid
+  invoiceDate   DateTime             @default(now())
+  dueDate       DateTime?
+  subtotal      Float
+  tax           Float                @default(0)
+  total         Float
+  paymentStatus InvoicePaymentStatus @default(PENDING)
+  pdfUrl        String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  order    Order?   @relation(fields: [orderId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("invoices")
+}
+
+model InvoiceSequence {
+  year         Int      @id
+  currentValue Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@map("invoice_sequences")
 }

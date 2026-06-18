@@ -75,3 +75,82 @@ export async function createCustomer(data: {
   }
   return prisma.customer.create({ data })
 }
+
+export async function getCRMCustomers() {
+  const customers = await prisma.customer.findMany({
+    include: {
+      orders: {
+        select: {
+          total_amount: true,
+          created_at: true,
+          items: {
+            select: { totalProfit: true }
+          }
+        }
+      }
+    },
+    orderBy: { shop_name: 'asc' }
+  });
+
+  const processed = customers.map(c => {
+    let lifetimeRevenue = 0;
+    let lifetimeProfit = 0;
+    let lastOrderDate: Date | null = null;
+
+    c.orders.forEach(o => {
+      lifetimeRevenue += Number(o.total_amount || 0);
+      o.items.forEach(i => {
+        lifetimeProfit += i.totalProfit;
+      });
+      if (o.created_at) {
+        if (!lastOrderDate || new Date(o.created_at) > lastOrderDate) {
+          lastOrderDate = new Date(o.created_at);
+        }
+      }
+    });
+
+    let status = "Active";
+    if (!lastOrderDate) {
+      status = "New";
+    } else {
+      const daysSinceLastOrder = (new Date().getTime() - lastOrderDate.getTime()) / (1000 * 3600 * 24);
+      if (daysSinceLastOrder > 60) status = "Dormant";
+      if (lifetimeRevenue > 50000 && status !== "Dormant") status = "High Value";
+    }
+
+    return {
+      id: c.id,
+      shop_name: c.shop_name,
+      city: c.city,
+      phone: c.phone,
+      totalOrders: c.orders.length,
+      lifetimeRevenue,
+      lifetimeProfit,
+      lastOrderDate,
+      createdAt: c.created_at,
+      status
+    };
+  });
+
+  return serializePrisma(processed);
+}
+
+export async function getCustomerDetails(customerId: string) {
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    include: {
+      orders: {
+        orderBy: { created_at: 'desc' },
+        take: 10,
+        include: {
+          items: true
+        }
+      },
+      invoices: {
+        orderBy: { invoiceDate: 'desc' }
+      }
+    }
+  });
+
+  return serializePrisma(customer);
+}

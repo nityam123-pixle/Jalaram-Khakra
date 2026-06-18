@@ -121,9 +121,17 @@ export function Step4Success({ orderData }: { orderData: any }) {
           <Button variant="outline" className="w-full" size="lg">
             <Share2 className="w-4 h-4 mr-2 text-emerald-600" /> Share WhatsApp
           </Button>
-          <Button variant="outline" className="w-full" size="lg">
-            <Printer className="w-4 h-4 mr-2 text-blue-600" /> Print Invoice
-          </Button>
+          {orderData.invoice?.pdfUrl ? (
+            <Button variant="outline" className="w-full" size="lg" asChild>
+              <a href={orderData.invoice.pdfUrl} download={`${orderData.invoice.invoiceNumber}.pdf`}>
+                <Printer className="w-4 h-4 mr-2 text-blue-600" /> Download Invoice
+              </a>
+            </Button>
+          ) : (
+            <Button variant="outline" className="w-full" size="lg" disabled>
+              <Printer className="w-4 h-4 mr-2 text-blue-600" /> Generating...
+            </Button>
+          )}
           <Button className="w-full" size="lg" onClick={() => window.location.reload()}>
             <Plus className="w-4 h-4 mr-2" /> Create Another
           </Button>

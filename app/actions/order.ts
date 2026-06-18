@@ -3,6 +3,7 @@
 import { prisma } from "../../lib/prisma"
 import { revalidatePath } from "next/cache"
 import { serializePrisma } from "../../lib/prisma-serializer"
+import { generateInvoicePdf } from "../../lib/pdf-generator"
 
 function revalidateAllPaths(orderId?: string) {
   revalidatePath("/")
@@ -130,6 +131,17 @@ export async function createOrder(data: CreateOrderInput) {
       }
     })
 
+    const currentYear = new Date().getFullYear()
+
+    // Atomically increment the sequence
+    const sequence = await tx.invoiceSequence.upsert({
+      where: { year: currentYear },
+      update: { currentValue: { increment: 1 } },
+      create: { year: currentYear, currentValue: 1 }
+    })
+
+    const invoiceNumber = `INV-${currentYear}-${sequence.currentValue.toString().padStart(5, '0')}`
+
     // Create the Order
     const order = await tx.order.create({
       data: {
@@ -148,6 +160,21 @@ export async function createOrder(data: CreateOrderInput) {
       },
       include: {
         items: true
+      }
+    })
+
+    // Create Invoice
+    const invoice = await tx.invoice.create({
+      data: {
+        invoiceNumber,
+        orderId: order.id,
+        customerId: customer.id,
+        invoiceDate: new Date(),
+        dueDate: data.dueDate,
+        subtotal: totalAmount,
+        tax: 0,
+        total: totalAmount,
+        paymentStatus: "PENDING"
       }
     })
 
@@ -178,12 +205,41 @@ export async function createOrder(data: CreateOrderInput) {
     }
 
     console.log("[createOrder] Order created successfully:", order.id)
-    return order
+    return { order, invoice, customer, invoiceNumber }
   })
+
+  try {
+    const pdfUrl = await generateInvoicePdf({
+      invoiceNumber: result.invoiceNumber,
+      invoiceDate: new Date().toLocaleDateString('en-IN'),
+      dueDate: data.dueDate ? new Date(data.dueDate).toLocaleDateString('en-IN') : undefined,
+      customerName: result.customer.shop_name,
+      customerAddress: result.customer.address || '',
+      customerCity: result.customer.city,
+      customerPhone: result.customer.phone || undefined,
+      items: orderItemsData.map(item => ({
+        name: `${item.productName} (${item.variantName})`,
+        quantity: item.quantity,
+        rate: item.unitSellingPrice,
+        amount: item.totalRevenue
+      })),
+      subtotal: totalAmount,
+      tax: 0,
+      total: totalAmount
+    });
+
+    await prisma.invoice.update({
+      where: { id: result.invoice.id },
+      data: { pdfUrl }
+    });
+  } catch (err) {
+    console.error("[createOrder] Failed to generate PDF invoice:", err);
+    // Continue without failing the order creation
+  }
 
   revalidateAllPaths()
   
-  return serializePrisma(result)
+  return serializePrisma(result.order)
 }
 
 export async function getOrderById(id: string) {
@@ -210,6 +266,15 @@ export async function updateOrderStatus(id: string, status: string) {
     where: { id },
     data: { status }
   })
+
+  // If order is delivered or completed, mark invoice as PAID
+  if (status.toLowerCase() === 'delivered' || status.toLowerCase() === 'completed') {
+    await prisma.invoice.updateMany({
+      where: { orderId: id },
+      data: { paymentStatus: 'PAID' }
+    });
+  }
+
   revalidateAllPaths(id)
   return serializePrisma(order)
 }
@@ -613,6 +678,14 @@ export async function bulkUpdateOrderStatus(ids: string[], status: string) {
     data: { status }
   })
 
+  // If orders are delivered or completed, mark invoices as PAID
+  if (status.toLowerCase() === 'delivered' || status.toLowerCase() === 'completed') {
+    await prisma.invoice.updateMany({
+      where: { orderId: { in: ids } },
+      data: { paymentStatus: 'PAID' }
+    });
+  }
+
   ids.forEach(id => {
     revalidatePath(`/orders/${id}`)
     revalidatePath(`/orders/${id}/edit`)
@@ -620,6 +693,7 @@ export async function bulkUpdateOrderStatus(ids: string[], status: string) {
   revalidatePath("/orders")
   revalidatePath("/")
   revalidatePath("/summary")
+  revalidatePath("/invoices") // Revalidate invoices as well
 
   return result.count
 }
