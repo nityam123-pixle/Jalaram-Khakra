@@ -305,8 +305,15 @@ export async function generateMonthlyStatement(customerId: string, month: number
       subtotal: totalAmount,
       tax: 0,
       total: totalAmount,
-      pdfUrl
+      pdfUrl: '' // Will update immediately
     }
+  });
+
+  const finalPdfUrl = `/api/pdf/statement?customerId=${customerId}&month=${month + 1}&year=${year}`;
+  
+  await prisma.invoice.update({
+    where: { id: newInvoice.id },
+    data: { pdfUrl: finalPdfUrl }
   });
 
   revalidatePath('/invoices');

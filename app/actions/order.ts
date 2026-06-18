@@ -249,11 +249,23 @@ export async function updateOrderStatus(id: string, status: string) {
     data: { status }
   })
 
-  // If order is delivered or completed, mark invoice as PAID
-  if (status.toLowerCase() === 'delivered' || status.toLowerCase() === 'completed') {
+  // Sync invoice status with order status
+  const lowerStatus = status.toLowerCase();
+  if (lowerStatus === 'delivered' || lowerStatus === 'completed') {
     await prisma.invoice.updateMany({
       where: { orderId: id },
       data: { paymentStatus: 'PAID' }
+    });
+  } else if (lowerStatus === 'cancelled') {
+    await prisma.invoice.updateMany({
+      where: { orderId: id },
+      data: { paymentStatus: 'CANCELLED' }
+    });
+  } else {
+    // For pending, confirmed, processing, etc.
+    await prisma.invoice.updateMany({
+      where: { orderId: id },
+      data: { paymentStatus: 'PENDING' }
     });
   }
 
@@ -660,11 +672,23 @@ export async function bulkUpdateOrderStatus(ids: string[], status: string) {
     data: { status }
   })
 
-  // If orders are delivered or completed, mark invoices as PAID
-  if (status.toLowerCase() === 'delivered' || status.toLowerCase() === 'completed') {
+  // Sync invoice status with order status
+  const lowerStatus = status.toLowerCase();
+  if (lowerStatus === 'delivered' || lowerStatus === 'completed') {
     await prisma.invoice.updateMany({
       where: { orderId: { in: ids } },
       data: { paymentStatus: 'PAID' }
+    });
+  } else if (lowerStatus === 'cancelled') {
+    await prisma.invoice.updateMany({
+      where: { orderId: { in: ids } },
+      data: { paymentStatus: 'CANCELLED' }
+    });
+  } else {
+    // For pending, confirmed, processing, etc.
+    await prisma.invoice.updateMany({
+      where: { orderId: { in: ids } },
+      data: { paymentStatus: 'PENDING' }
     });
   }
 
