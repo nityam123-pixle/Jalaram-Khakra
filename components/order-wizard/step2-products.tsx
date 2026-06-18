@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronLeft, ShoppingCart, Edit2, Trash2, Copy, AlertCircle } from "lucide-react"
+import { ChevronLeft, ShoppingCart, Trash2, AlertCircle, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import type { SelectedCustomer, OrderItemData } from "./wizard"
 
 export function Step2Products({
@@ -23,221 +24,360 @@ export function Step2Products({
   onBack: () => void
   onNext: () => void
 }) {
-  const [selectedCatId, setSelectedCatId] = useState<string | null>(null)
-  const [selectedProdId, setSelectedProdId] = useState<string | null>(null)
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState("ALL")
   
-  const [qty, setQty] = useState<number>(1)
-  const [sellingPrice, setSellingPrice] = useState<string>("")
-  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  // Track temporary inputs for quantity and price per variant ID
+  const [variantInputs, setVariantInputs] = useState<Record<string, { qty: number; price: string }>>({})
 
-  const activeCategory = catalogData.find(c => c.id === selectedCatId)
-  const activeProduct = activeCategory?.products.find((p: any) => p.id === selectedProdId)
-  const activeVariant = activeProduct?.variants.find((v: any) => v.id === selectedVariantId)
-  const pricingRule = activeVariant?.pricingRules?.[0]
+  // Flatten catalogData into a single list of variants
+  const allVariants = catalogData.flatMap((cat) => 
+    cat.products.flatMap((prod: any) => 
+      prod.variants.map((v: any) => ({
+        id: v.id,
+        name: v.name,
+        productId: prod.id,
+        productName: prod.name,
+        categoryId: cat.id,
+        categoryName: cat.name,
+        sku: v.sku,
+        pricingRule: v.pricingRules?.[0] || null,
+        unitType: v.unitType,
+      }))
+    )
+  )
 
-  const handleSelectVariant = (vId: string) => {
-    setSelectedVariantId(vId)
-    const variant = activeProduct.variants.find((v: any) => v.id === vId)
-    const pr = variant?.pricingRules?.[0]
-    if (pr) {
-      setSellingPrice(pr.minSellingPrice?.toString() || pr.costPrice?.toString() || "0")
-    } else {
-      setSellingPrice("")
+  // Group variants by category
+  const groupedByCategory = allVariants.reduce((acc, v) => {
+    const cat = v.categoryName
+    if (!acc[cat]) acc[cat] = []
+    acc[cat].push(v)
+    return acc
+  }, {} as Record<string, typeof allVariants>)
+
+  const getQty = (variantId: string) => {
+    if (variantInputs[variantId]?.qty !== undefined) {
+      return variantInputs[variantId].qty
     }
+    const cartItem = items.find(i => i.variantId === variantId)
+    return cartItem ? cartItem.quantity : 1
   }
 
-  const handleAddOrUpdateItem = () => {
-    if (!activeVariant) return
-    const costPrice = Number(pricingRule?.costPrice || 0)
-    const price = Number(sellingPrice)
-    const quantity = Number(qty)
-    if (price <= 0 || quantity <= 0) return
+  const getPrice = (variantId: string, pricingRule: any) => {
+    if (variantInputs[variantId]?.price !== undefined) {
+      return variantInputs[variantId].price
+    }
+    const cartItem = items.find(i => i.variantId === variantId)
+    if (cartItem) return cartItem.unitSellingPrice.toString()
+    
+    return pricingRule?.minSellingPrice?.toString() || pricingRule?.costPrice?.toString() || ""
+  }
 
-    const revenue = price * quantity
-    const profit = revenue - (costPrice * quantity)
+  const setQtyForVariant = (variantId: string, value: number) => {
+    const nextQty = Math.max(1, value)
+    setVariantInputs(prev => ({
+      ...prev,
+      [variantId]: {
+        ...prev[variantId],
+        qty: nextQty,
+        price: getPrice(variantId, allVariants.find(v => v.id === variantId)?.pricingRule)
+      }
+    }))
+  }
 
-    if (editingItemId) {
-      setItems(items.map(i => i.id === editingItemId ? {
-        ...i,
-        quantity,
+  const setPriceForVariant = (variantId: string, value: string) => {
+    setVariantInputs(prev => ({
+      ...prev,
+      [variantId]: {
+        ...prev[variantId],
+        price: value,
+        qty: getQty(variantId)
+      }
+    }))
+  }
+
+  const handleAddOrUpdate = (variant: any) => {
+    const qty = getQty(variant.id)
+    const priceStr = getPrice(variant.id, variant.pricingRule)
+    const price = Number(priceStr)
+    const costPrice = Number(variant.pricingRule?.costPrice || 0)
+    
+    if (qty <= 0 || price <= 0) return
+
+    const revenue = price * qty
+    const profit = revenue - (costPrice * qty)
+
+    const existingIndex = items.findIndex(i => i.variantId === variant.id)
+    if (existingIndex >= 0) {
+      setItems(prev => prev.map((item, idx) => idx === existingIndex ? {
+        ...item,
+        quantity: qty,
         unitSellingPrice: price,
         totalRevenue: revenue,
         totalProfit: profit
-      } : i))
-      setEditingItemId(null)
+      } : item))
     } else {
-      setItems([...items, {
+      setItems(prev => [...prev, {
         id: Math.random().toString(),
-        categoryId: activeCategory.id,
-        categoryName: activeCategory.name,
-        productId: activeProduct.id,
-        productName: activeProduct.name,
-        variantId: activeVariant.id,
-        variantName: activeVariant.name,
-        quantity,
+        categoryId: variant.categoryId,
+        categoryName: variant.categoryName,
+        productId: variant.productId,
+        productName: variant.productName,
+        variantId: variant.id,
+        variantName: variant.name,
+        quantity: qty,
         unitCostPrice: costPrice,
         unitSellingPrice: price,
         totalRevenue: revenue,
         totalProfit: profit
       }])
     }
-    
-    // Reset builder to Product level so they can add another variant quickly
-    setSelectedVariantId(null)
-    setQty(1)
   }
 
-  const handleEdit = (item: OrderItemData) => {
-    const cId = item.categoryId !== "unknown" ? item.categoryId : catalogData.find(c => c.name === item.categoryName)?.id || null
-    setSelectedCatId(cId)
-    const pId = item.productId !== "unknown" ? item.productId : catalogData.find(c => c.name === item.categoryName)?.products.find((p:any) => p.name === item.productName)?.id || null
-    setSelectedProdId(pId)
-    setSelectedVariantId(item.variantId)
-    setQty(item.quantity)
-    setSellingPrice(item.unitSellingPrice.toString())
-    setEditingItemId(item.id)
+  const handleRemove = (variantId: string) => {
+    setItems(prev => prev.filter(i => i.variantId !== variantId))
+    setVariantInputs(prev => {
+      const next = { ...prev }
+      delete next[variantId]
+      return next
+    })
   }
 
   const totalRevenue = items.reduce((sum, i) => sum + i.totalRevenue, 0)
-  const totalProfit = items.reduce((sum, i) => sum + i.totalProfit, 0)
+
+  // Check if any categories match filters
+  const visibleCategories = Object.entries(groupedByCategory).filter(([category, categoryVariants]) => {
+    if (selectedCategoryTab !== "ALL" && category !== selectedCategoryTab) {
+      return false
+    }
+    const matchingCount = categoryVariants.filter(v => {
+      if (searchQuery.trim() !== "") {
+        const query = searchQuery.toLowerCase()
+        return (
+          v.productName.toLowerCase().includes(query) ||
+          v.name.toLowerCase().includes(query)
+        )
+      }
+      return true
+    }).length
+    return matchingCount > 0
+  })
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in pb-32 md:pb-0">
-      {/* Left: Drill Down Menu (70% width) */}
-      <div className="md:col-span-7 lg:col-span-8 space-y-6">
+      {/* Left: Searchable Catalog List (8 cols) */}
+      <div className="md:col-span-8 space-y-5">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={onBack}><ChevronLeft className="w-5 h-5" /></Button>
           <div>
-            <h2 className="text-2xl font-semibold">Products</h2>
+            <h2 className="text-2xl font-semibold">Select Products</h2>
             <p className="text-sm text-muted-foreground">Order for {customer.shop_name}</p>
           </div>
         </div>
 
-        {/* Level 1: Categories */}
-        {!selectedCatId && (
-          <div className="space-y-4 animate-in slide-in-from-bottom-2">
-            <h3 className="text-lg font-medium text-slate-700">Select Category</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {catalogData.map(c => (
-                <Button 
-                  key={c.id} 
-                  variant="outline" 
-                  className="h-auto py-4 flex flex-col items-center gap-2"
-                  onClick={() => setSelectedCatId(c.id)}
-                >
-                  <span className="font-semibold">{c.name}</span>
-                  <span className="text-xs text-muted-foreground">{c.products.length} Products</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by product name, packet size..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-8 h-10 bg-background"
+          />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
 
-        {/* Level 2: Products */}
-        {selectedCatId && !selectedProdId && (
-          <div className="space-y-4 animate-in slide-in-from-right-2">
-            <div className="flex items-center gap-2 mb-2">
-              <Button variant="ghost" size="sm" onClick={() => setSelectedCatId(null)} className="text-muted-foreground">
-                &larr; Back to Categories
-              </Button>
-              <span className="font-medium">{activeCategory?.name}</span>
+        {/* Category Tabs */}
+        <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
+          <Button
+            variant={selectedCategoryTab === "ALL" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedCategoryTab("ALL")}
+            className="rounded-full shrink-0"
+          >
+            All Products
+          </Button>
+          {Object.keys(groupedByCategory).map((cat) => (
+            <Button
+              key={cat}
+              variant={selectedCategoryTab === cat ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedCategoryTab(cat)}
+              className="rounded-full shrink-0"
+            >
+              {cat}
+            </Button>
+          ))}
+        </div>
+
+        {/* Product Catalog List */}
+        <div className="space-y-6 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
+          {visibleCategories.length === 0 ? (
+            <div className="text-center text-muted-foreground py-12 bg-muted/20 rounded-xl border border-dashed">
+              No matching products found
             </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {activeCategory?.products.map((p: any) => (
-                <Card key={p.id} className="cursor-pointer hover:border-primary hover:shadow-sm transition-all" onClick={() => setSelectedProdId(p.id)}>
-                  <CardContent className="p-4 text-center space-y-2">
-                    <div className="font-semibold text-sm leading-tight">{p.name}</div>
-                    <Badge variant="secondary" className="text-xs">{p.variants.length} Variants</Badge>
-                  </CardContent>
+          ) : (
+            visibleCategories.map(([category, categoryVariants]) => {
+              const matchingVariants = categoryVariants.filter(v => {
+                if (searchQuery.trim() !== "") {
+                  const query = searchQuery.toLowerCase()
+                  return (
+                    v.productName.toLowerCase().includes(query) ||
+                    v.name.toLowerCase().includes(query)
+                  )
+                }
+                return true
+              })
+
+              return (
+                <Card key={category} className="overflow-hidden shadow-sm border border-border">
+                  <div className="bg-muted/40 px-4 py-2 border-b border-border/50">
+                    <h3 className="font-semibold text-xs flex items-center gap-2 uppercase tracking-wider text-muted-foreground">
+                      {category}
+                    </h3>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {matchingVariants.map((v) => {
+                      const pricingRule = v.pricingRule
+                      const min = pricingRule?.minSellingPrice ? Number(pricingRule.minSellingPrice) : null
+                      const max = pricingRule?.maxSellingPrice ? Number(pricingRule.maxSellingPrice) : null
+                      
+                      const qtyVal = getQty(v.id)
+                      const priceVal = getPrice(v.id, pricingRule)
+                      const numPrice = Number(priceVal)
+
+                      const isTooLow = min !== null && numPrice < min
+                      const isTooHigh = max !== null && numPrice > max
+                      const isPriceInvalid = isTooLow || isTooHigh || isNaN(numPrice) || numPrice <= 0
+
+                      const isInCart = items.some(i => i.variantId === v.id)
+
+                      return (
+                        <div key={v.id} className="p-4 space-y-3 hover:bg-muted/5 transition-colors">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="font-medium text-base text-foreground">{v.productName}</div>
+                              <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+                                <span>Variant: <strong className="text-foreground">{v.name}</strong></span>
+                                {pricingRule ? (
+                                  <span className="text-slate-500 font-medium">
+                                    {min !== null && max !== null && `Price Range: ₹${min} - ₹${max}`}
+                                    {min !== null && max === null && `Min Price: ₹${min}`}
+                                    {min === null && max !== null && `Max Price: ₹${max}`}
+                                    {min === null && max === null && `Price: ₹${pricingRule.costPrice}`}
+                                  </span>
+                                ) : (
+                                  <span className="text-destructive font-medium">⚠️ No pricing configured</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {pricingRule && (
+                              <div className="flex flex-wrap items-center gap-3">
+                                {/* Quantity Controls */}
+                                <div className="flex items-center border border-input rounded-md h-10 bg-background overflow-hidden">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-full w-8 rounded-none border-r hover:bg-muted"
+                                    onClick={() => setQtyForVariant(v.id, qtyVal - 1)}
+                                    disabled={qtyVal <= 1}
+                                  >
+                                    -
+                                  </Button>
+                                  <span className="w-9 text-center font-semibold text-sm">{qtyVal}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-full w-8 rounded-none border-l hover:bg-muted"
+                                    onClick={() => setQtyForVariant(v.id, qtyVal + 1)}
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+
+                                {/* Price Input */}
+                                <div className="w-24 relative">
+                                  <Input
+                                    type="number"
+                                    step="any"
+                                    value={priceVal}
+                                    onChange={(e) => setPriceForVariant(v.id, e.target.value)}
+                                    className={`h-10 text-right pr-6 bg-background ${isPriceInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                                  />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₹</span>
+                                </div>
+
+                                {/* Actions */}
+                                {isInCart ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      className="h-10 border-emerald-600/30 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 font-medium px-3 flex gap-1.5 items-center"
+                                      onClick={() => handleAddOrUpdate(v)}
+                                      disabled={isPriceInvalid}
+                                    >
+                                      Update
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-10 w-10 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleRemove(v.id)}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    className="h-10 px-4 font-semibold"
+                                    onClick={() => handleAddOrUpdate(v)}
+                                    disabled={isPriceInvalid}
+                                  >
+                                    Add
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Price Range Validation Warning */}
+                          {isPriceInvalid && pricingRule && (
+                            <div className="text-[11px] text-destructive flex items-center gap-1 font-medium bg-destructive/5 px-2 py-1 rounded border border-destructive/10 w-fit">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {min !== null && max !== null && `Selling price must be between ₹${min} and ₹${max}`}
+                              {min !== null && max === null && `Selling price must be at least ₹${min}`}
+                              {min === null && max !== null && `Selling price must not exceed ₹${max}`}
+                              {(min === null && max === null) && `Enter a valid price above ₹0`}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Level 3: Variants & Builder */}
-        {selectedProdId && activeProduct && (
-          <div className="space-y-4 animate-in slide-in-from-right-2">
-            <div className="flex items-center gap-2 mb-4 border-b pb-4">
-              <Button variant="ghost" size="sm" onClick={() => { setSelectedProdId(null); setSelectedVariantId(null); }} className="text-muted-foreground -ml-3">
-                &larr; Back
-              </Button>
-              <span className="text-muted-foreground">{activeCategory?.name} / </span>
-              <span className="font-medium text-lg">{activeProduct.name}</span>
-            </div>
-            
-            <h4 className="font-medium mb-3">Select Variant</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-              {activeProduct.variants.map((v: any) => {
-                const pr = v.pricingRules?.[0]
-                const priceDisplay = pr ? `₹${Number(pr.minSellingPrice || pr.costPrice).toFixed(0)}` : "N/A"
-                return (
-                  <Card 
-                    key={v.id} 
-                    className={`cursor-pointer transition-all ${selectedVariantId === v.id ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'hover:border-primary/50'}`}
-                    onClick={() => handleSelectVariant(v.id)}
-                  >
-                    <CardContent className="p-3 flex flex-col justify-center items-center text-center h-full gap-1">
-                      <span className="font-semibold text-sm">{v.name}</span>
-                      <span className="text-xs text-muted-foreground font-medium">{priceDisplay}</span>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-
-            {/* Builder Area */}
-            {activeVariant && (
-              <div className="bg-muted/40 dark:bg-card/50 p-6 rounded-xl border border-border space-y-5 animate-in slide-in-from-bottom-2">
-                {!pricingRule ? (
-                   <div className="flex flex-col items-center justify-center py-6 text-slate-500 space-y-2">
-                     <AlertCircle className="w-8 h-8 text-amber-500" />
-                     <p className="font-medium">Pricing unavailable</p>
-                     <p className="text-sm">Cannot add this variant because it has no active pricing rules.</p>
-                   </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Quantity</label>
-                        <Input type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} className="h-12 text-lg" />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Unit Price (₹)</label>
-                        <Input type="number" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} className="h-12 text-lg" />
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
-                      <div>
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Revenue</div>
-                        <div className="font-bold text-xl">₹{(Number(sellingPrice) * qty).toFixed(2)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Profit</div>
-                        <div className="font-bold text-emerald-600 text-lg">₹{((Number(sellingPrice) * qty) - (Number(pricingRule.costPrice) * qty)).toFixed(2)}</div>
-                      </div>
-                    </div>
-
-                    <Button 
-                      className="w-full h-12 text-lg mt-2" 
-                      onClick={handleAddOrUpdateItem}
-                      disabled={Number(sellingPrice) <= 0 || qty <= 0}
-                    >
-                      {editingItemId ? "Update Item" : "Add to Order"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+              )
+            })
+          )}
+        </div>
       </div>
 
-      {/* Right: Cart Summary (30% width on Desktop, Sticky Bottom on Mobile) */}
-      <div className="md:col-span-5 lg:col-span-4 flex flex-col gap-4 fixed bottom-0 left-0 right-0 md:relative bg-card dark:bg-card p-4 md:p-0 border-t border-border md:border-0 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.5)] md:shadow-none z-50">
+      {/* Right: Sticky Cart Summary (4 cols) */}
+      <div className="md:col-span-4 flex flex-col gap-4 fixed bottom-0 left-0 right-0 md:relative bg-card dark:bg-card p-4 md:p-0 border-t border-border md:border-0 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.5)] md:shadow-none z-50">
         <div className="bg-card dark:bg-card rounded-xl border border-border shadow-sm flex flex-col md:h-[calc(100vh-140px)]">
           <div className="p-4 border-b border-border bg-muted/40 flex justify-between items-center hidden md:flex rounded-t-xl">
             <h3 className="font-semibold flex items-center gap-2">
@@ -260,13 +400,10 @@ export function Step2Products({
                     <div className="font-semibold">₹{item.totalRevenue.toFixed(2)}</div>
                   </div>
                   
-                  {/* Actions */}
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 dark:bg-background/90 border border-border backdrop-blur-sm p-1 rounded-md">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(item)}>
-                      <Edit2 className="w-3 h-3 text-blue-600" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setItems(items.filter(i => i.id !== item.id))}>
-                      <Trash2 className="w-3 h-3 text-red-600" />
+                  {/* Quick Delete */}
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 dark:bg-background/90 border border-border backdrop-blur-sm p-1 rounded-md">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemove(item.variantId)}>
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
                     </Button>
                   </div>
                 </div>

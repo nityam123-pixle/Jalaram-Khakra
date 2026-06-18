@@ -174,12 +174,12 @@ export function StockLedgerClient({ initialData }: { initialData: any[] }) {
                       {isPositive ? '+' : ''}{entry.quantity}
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                      {entry.stockAfter}
+                      {entry.newStock}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        {entry.referenceId && (
-                          <span className="text-xs font-mono">{entry.referenceId.slice(0, 8)}</span>
+                        {entry.reference && (
+                          <span className="text-xs font-mono">{entry.reference.slice(0, 8)}</span>
                         )}
                         {entry.notes && (
                           <span className="text-[10px] text-muted-foreground truncate max-w-[120px]" title={entry.notes}>

@@ -13,6 +13,16 @@ import { OrdersEmptyState } from "./orders-empty-state"
 import { toast } from "sonner"
 import { getAllOrders, updateOrderStatus, deleteOrder, bulkUpdateOrderStatus, bulkDeleteOrders } from "@/app/actions/order"
 import { Button } from "../ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog"
 
 interface OrdersDashboardProps {
   initialOrdersData: { data: any[], totalCount: number }
@@ -23,6 +33,11 @@ interface OrdersDashboardProps {
 
 export function OrdersDashboard({ initialOrdersData, initialStats, initialCities, catalog }: OrdersDashboardProps) {
   const queryClient = useQueryClient()
+
+  // Safeguard: reset document body pointer-events to prevent stuck Radix UI overlays on navigation
+  useEffect(() => {
+    document.body.style.pointerEvents = ""
+  }, [])
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState("")
@@ -70,6 +85,23 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   // Details sheet state
   const [activeSheetOrder, setActiveSheetOrder] = useState<any | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
+
+  // Deletion Dialog State
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "single"; id: string } | { type: "bulk"; ids: string[] } | null>(null)
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    if (deleteTarget.type === "single") {
+      deleteMutation.mutate(deleteTarget.id)
+    } else {
+      bulkDeleteMutation.mutate(deleteTarget.ids)
+    }
+    setDeleteConfirmOpen(false)
+    setDeleteTarget(null)
+    // Clear stuck body pointer-events style
+    document.body.style.pointerEvents = ""
+  }
 
   // Flatten products from catalog category hierarchy for filtering dropdown
   const productsList = useMemo(() => {
@@ -152,9 +184,18 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
     onMutate: async ({ id, status }) => {
       await queryClient.cancelQueries({ queryKey: ["orders"] })
       const previousOrders = queryClient.getQueryData(["orders"])
-      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any) => {
         if (!old) return old
-        return old.map(o => o.id === id ? { ...o, status } : o)
+        if (typeof old === "object" && "data" in old && Array.isArray(old.data)) {
+          return {
+            ...old,
+            data: old.data.map((o: any) => o.id === id ? { ...o, status } : o)
+          }
+        }
+        if (Array.isArray(old)) {
+          return old.map((o: any) => o.id === id ? { ...o, status } : o)
+        }
+        return old
       })
       toast.success(`Order #${id.slice(0, 8).toUpperCase()} marked as ${status}`)
       return { previousOrders }
@@ -181,9 +222,19 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ["orders"] })
       const previousOrders = queryClient.getQueryData(["orders"])
-      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any) => {
         if (!old) return old
-        return old.filter(o => o.id !== id)
+        if (typeof old === "object" && "data" in old && Array.isArray(old.data)) {
+          return {
+            ...old,
+            totalCount: Math.max(0, old.totalCount - 1),
+            data: old.data.filter((o: any) => o.id !== id)
+          }
+        }
+        if (Array.isArray(old)) {
+          return old.filter((o: any) => o.id !== id)
+        }
+        return old
       })
       setSelectedIds((prev) => prev.filter((x) => x !== id))
       toast.success("Order deleted successfully")
@@ -201,8 +252,8 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   })
 
   const handleDelete = (id: string) => {
-    if (!confirm("Are you sure you want to delete this order?")) return
-    deleteMutation.mutate(id)
+    setDeleteTarget({ type: "single", id })
+    setDeleteConfirmOpen(true)
   }
 
   // Bulk actions
@@ -213,9 +264,18 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
     onMutate: async ({ ids, status }) => {
       await queryClient.cancelQueries({ queryKey: ["orders"] })
       const previousOrders = queryClient.getQueryData(["orders"])
-      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any) => {
         if (!old) return old
-        return old.map(o => ids.includes(o.id) ? { ...o, status } : o)
+        if (typeof old === "object" && "data" in old && Array.isArray(old.data)) {
+          return {
+            ...old,
+            data: old.data.map((o: any) => ids.includes(o.id) ? { ...o, status } : o)
+          }
+        }
+        if (Array.isArray(old)) {
+          return old.map((o: any) => ids.includes(o.id) ? { ...o, status } : o)
+        }
+        return old
       })
       setSelectedIds([])
       toast.success(`Updated status for ${ids.length} orders`)
@@ -243,9 +303,19 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
     onMutate: async (ids) => {
       await queryClient.cancelQueries({ queryKey: ["orders"] })
       const previousOrders = queryClient.getQueryData(["orders"])
-      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any) => {
         if (!old) return old
-        return old.filter(o => !ids.includes(o.id))
+        if (typeof old === "object" && "data" in old && Array.isArray(old.data)) {
+          return {
+            ...old,
+            totalCount: Math.max(0, old.totalCount - ids.length),
+            data: old.data.filter((o: any) => !ids.includes(o.id))
+          }
+        }
+        if (Array.isArray(old)) {
+          return old.filter((o: any) => !ids.includes(o.id))
+        }
+        return old
       })
       setSelectedIds([])
       toast.success(`Deleted ${ids.length} orders successfully`)
@@ -263,9 +333,8 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   })
 
   const handleBulkDelete = () => {
-    const idsToDelete = [...selectedIds]
-    if (!confirm(`Are you sure you want to delete ${idsToDelete.length} orders?`)) return
-    bulkDeleteMutation.mutate(idsToDelete)
+    setDeleteTarget({ type: "bulk", ids: [...selectedIds] })
+    setDeleteConfirmOpen(true)
   }
 
   // CSV Exporter
@@ -490,6 +559,30 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
         onOpenChange={setIsSheetOpen}
         onStatusChange={handleStatusChange}
       />
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.type === "single" 
+                ? "This will permanently delete this order and restore its inventory allocation."
+                : `This will permanently delete ${deleteTarget?.ids?.length ?? 0} selected orders and restore their inventory allocations.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete} 
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground animate-in fade-in"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

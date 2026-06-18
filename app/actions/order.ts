@@ -4,6 +4,22 @@ import { prisma } from "../../lib/prisma"
 import { revalidatePath } from "next/cache"
 import { serializePrisma } from "../../lib/prisma-serializer"
 
+function revalidateAllPaths(orderId?: string) {
+  revalidatePath("/")
+  revalidatePath("/summary")
+  revalidatePath("/orders")
+  if (orderId) {
+    revalidatePath(`/orders/${orderId}`)
+    revalidatePath(`/orders/${orderId}/edit`)
+  }
+  revalidatePath("/inventory")
+  revalidatePath("/inventory/current")
+  revalidatePath("/inventory/ledger")
+  revalidatePath("/inventory/movements")
+  revalidatePath("/inventory/low-stock")
+  revalidatePath("/inventory/settings")
+}
+
 export type OrderItemInput = {
   variantId: string
   quantity: number
@@ -32,7 +48,11 @@ export async function createOrder(data: CreateOrderInput) {
       product: {
         include: { category: true }
       },
-      pricingRules: true
+      pricingRules: {
+        where: { effectiveTo: null },
+        orderBy: { effectiveFrom: 'desc' },
+        take: 1
+      }
     }
   })
 
@@ -148,9 +168,9 @@ export async function createOrder(data: CreateOrderInput) {
             variantId: item.variantId,
             action: "SOLD_THROUGH_ORDER",
             quantity: -item.quantity,
-            stockBefore: inventory.availableStock,
-            stockAfter: updatedInventory.availableStock,
-            referenceId: order.id,
+            previousStock: inventory.availableStock,
+            newStock: updatedInventory.availableStock,
+            reference: order.id,
             notes: `Order #${order.id.slice(0,8)} created for ${customer.shop_name}`
           }
         })
@@ -161,8 +181,7 @@ export async function createOrder(data: CreateOrderInput) {
     return order
   })
 
-  revalidatePath("/")
-  revalidatePath("/summary")
+  revalidateAllPaths()
   
   return serializePrisma(result)
 }
@@ -191,17 +210,70 @@ export async function updateOrderStatus(id: string, status: string) {
     where: { id },
     data: { status }
   })
-  revalidatePath(`/orders/${id}`)
-  revalidatePath(`/orders/${id}/edit`)
-  revalidatePath("/orders")
+  revalidateAllPaths(id)
   return serializePrisma(order)
 }
 
 export async function deleteOrder(id: string) {
-  await prisma.order.delete({
-    where: { id }
+  // Run inside a database transaction to ensure atomicity
+  await prisma.$transaction(async (tx) => {
+    // 1. Fetch order details (including items and customer info)
+    const order = await tx.order.findUnique({
+      where: { id },
+      include: {
+        items: true,
+        customer: true,
+      }
+    })
+    
+    if (!order) throw new Error("Order not found")
+
+    // 2. Restore stock and write to ledger for each item
+    for (const item of order.items) {
+      const inventory = await tx.inventoryLevel.findUnique({
+        where: { variantId: item.variantId }
+      })
+
+      if (inventory) {
+        // Increment stock
+        const updatedInventory = await tx.inventoryLevel.update({
+          where: { variantId: item.variantId },
+          data: { availableStock: { increment: item.quantity } }
+        })
+
+        // Log to Stock Ledger
+        await tx.stockLedger.create({
+          data: {
+            variantId: item.variantId,
+            action: "RETURN_RECEIVED",
+            quantity: item.quantity,
+            previousStock: inventory.availableStock,
+            newStock: updatedInventory.availableStock,
+            reference: order.id,
+            notes: `Order #${order.id.slice(0, 8).toUpperCase()} deleted. Restoring stock.`
+          }
+        })
+      }
+    }
+
+    // 3. Decrement customer totalOrders count
+    if (order.customer) {
+      await tx.customer.update({
+        where: { id: order.customerId },
+        data: {
+          totalOrders: { decrement: 1 }
+        }
+      })
+    }
+
+    // 4. Finally delete the order
+    await tx.order.delete({
+      where: { id }
+    })
   })
-  revalidatePath("/orders")
+
+  // 5. Revalidate paths
+  revalidateAllPaths(id)
 }
 
 export async function getAllOrders(filters?: {
@@ -373,7 +445,11 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
       product: {
         include: { category: true }
       },
-      pricingRules: true
+      pricingRules: {
+        where: { effectiveTo: null },
+        orderBy: { effectiveFrom: 'desc' },
+        take: 1
+      }
     }
   })
 
@@ -446,20 +522,9 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
           where: { variantId: item.variantId }
         })
         if (inventory) {
-          const updated = await tx.inventoryLevel.update({
+          await tx.inventoryLevel.update({
             where: { variantId: item.variantId },
             data: { availableStock: { increment: item.quantity } }
-          })
-          await tx.stockLedger.create({
-            data: {
-              variantId: item.variantId,
-              action: "MANUAL_ADJUSTMENT",
-              quantity: item.quantity,
-              stockBefore: inventory.availableStock,
-              stockAfter: updated.availableStock,
-              referenceId: orderId,
-              notes: `Order #${orderId.slice(0,8)} edited. Restoring old stock.`
-            }
           })
         }
       }
@@ -481,20 +546,9 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
         where: { variantId: item.variantId }
       })
       if (inventory) {
-        const updated = await tx.inventoryLevel.update({
+        await tx.inventoryLevel.update({
           where: { variantId: item.variantId },
           data: { availableStock: { decrement: item.quantity } }
-        })
-        await tx.stockLedger.create({
-          data: {
-            variantId: item.variantId,
-            action: "SOLD_THROUGH_ORDER",
-            quantity: -item.quantity,
-            stockBefore: inventory.availableStock,
-            stockAfter: updated.availableStock,
-            referenceId: orderId,
-            notes: `Order #${orderId.slice(0,8)} edited. Deducting new stock.`
-          }
         })
       }
     }
@@ -520,11 +574,7 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
     return order
   })
 
-  revalidatePath(`/orders/${orderId}`)
-  revalidatePath(`/orders/${orderId}/edit`)
-  revalidatePath("/orders")
-  revalidatePath("/")
-  revalidatePath("/summary")
+  revalidateAllPaths(orderId)
 
   return serializePrisma(result)
 }
@@ -559,13 +609,73 @@ export async function bulkDeleteOrders(ids: string[]) {
     throw new Error("No order IDs provided")
   }
 
-  const result = await prisma.order.deleteMany({
-    where: { id: { in: ids } }
+  // Run in a transaction
+  const count = await prisma.$transaction(async (tx) => {
+    let deletedCount = 0
+
+    for (const id of ids) {
+      const order = await tx.order.findUnique({
+        where: { id },
+        include: {
+          items: true,
+          customer: true,
+        }
+      })
+
+      if (order) {
+        // Restore stock and write to ledger for each item
+        for (const item of order.items) {
+          const inventory = await tx.inventoryLevel.findUnique({
+            where: { variantId: item.variantId }
+          })
+
+          if (inventory) {
+            const updatedInventory = await tx.inventoryLevel.update({
+              where: { variantId: item.variantId },
+              data: { availableStock: { increment: item.quantity } }
+            })
+
+            await tx.stockLedger.create({
+              data: {
+                variantId: item.variantId,
+                action: "RETURN_RECEIVED",
+                quantity: item.quantity,
+                previousStock: inventory.availableStock,
+                newStock: updatedInventory.availableStock,
+                reference: order.id,
+                notes: `Order #${order.id.slice(0, 8).toUpperCase()} deleted (Bulk). Restoring stock.`
+              }
+            })
+          }
+        }
+
+        // Decrement customer totalOrders count
+        if (order.customer) {
+          await tx.customer.update({
+            where: { id: order.customerId },
+            data: {
+              totalOrders: { decrement: 1 }
+            }
+          })
+        }
+
+        // Delete the order
+        await tx.order.delete({
+          where: { id }
+        })
+        deletedCount++
+      }
+    }
+
+    return deletedCount
   })
 
-  revalidatePath("/orders")
-  revalidatePath("/")
-  revalidatePath("/summary")
+  // Revalidate paths
+  ids.forEach(id => {
+    revalidatePath(`/orders/${id}`)
+    revalidatePath(`/orders/${id}/edit`)
+  })
+  revalidateAllPaths()
 
-  return result.count
+  return count
 }

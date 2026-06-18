@@ -2,6 +2,7 @@
 import { useState } from "react"
 import { ChevronLeft, Check, Clock, Trash2, Plus, Save, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -75,8 +76,9 @@ export function EditOrderClient({ order, catalog }: { order: any, catalog: any[]
       await updateOrderStatus(order.id, newStatus)
       setStatus(newStatus)
       router.refresh()
+      toast.success("Order status updated successfully!")
     } catch (e) {
-      alert("Failed to update status")
+      toast.error("Failed to update status")
     } finally {
       setSavingStatus(false)
     }
@@ -128,11 +130,11 @@ export function EditOrderClient({ order, catalog }: { order: any, catalog: any[]
     const rule = getVariantRules(newVariantId)
     if (rule) {
       if (rule.minSellingPrice && newPrice < Number(rule.minSellingPrice)) {
-        alert(`Price is below minimum allowed (₹${rule.minSellingPrice})`)
+        toast.error(`Price is below minimum allowed (₹${rule.minSellingPrice})`)
         return
       }
       if (rule.maxSellingPrice && newPrice > Number(rule.maxSellingPrice)) {
-        alert(`Price is above maximum allowed (₹${rule.maxSellingPrice})`)
+        toast.error(`Price is above maximum allowed (₹${rule.maxSellingPrice})`)
         return
       }
     }
@@ -176,7 +178,7 @@ export function EditOrderClient({ order, catalog }: { order: any, catalog: any[]
   // Save changes to database
   const handleSaveItems = async () => {
     if (items.length === 0) {
-      alert("Order must have at least one item.")
+      toast.error("Order must have at least one item.")
       return
     }
 
@@ -185,11 +187,11 @@ export function EditOrderClient({ order, catalog }: { order: any, catalog: any[]
       const rule = getVariantRules(item.variantId)
       if (rule) {
         if (rule.minSellingPrice && Number(item.unitSellingPrice) < Number(rule.minSellingPrice)) {
-          alert(`Price for ${item.productName} (${item.variantName}) is below minimum (₹${rule.minSellingPrice})`)
+          toast.error(`Price for ${item.productName} (${item.variantName}) is below minimum (₹${rule.minSellingPrice})`)
           return
         }
         if (rule.maxSellingPrice && Number(item.unitSellingPrice) > Number(rule.maxSellingPrice)) {
-          alert(`Price for ${item.productName} (${item.variantName}) is above maximum (₹${rule.maxSellingPrice})`)
+          toast.error(`Price for ${item.productName} (${item.variantName}) is above maximum (₹${rule.maxSellingPrice})`)
           return
         }
       }
@@ -203,10 +205,10 @@ export function EditOrderClient({ order, catalog }: { order: any, catalog: any[]
         sellingPrice: Number(i.unitSellingPrice)
       }))
       await updateOrderItems(order.id, payload)
-      alert("Order items updated successfully!")
+      toast.success("Order items updated successfully!")
       router.refresh()
     } catch (e: any) {
-      alert(e.message || "Failed to update order items")
+      toast.error(e.message || "Failed to update order items")
     } finally {
       setSavingItems(false)
     }

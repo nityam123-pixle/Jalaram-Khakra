@@ -154,11 +154,11 @@ export function MovementsTimelineClient({ initialData }: { initialData: any[] })
                               
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <div className="flex gap-4">
-                                  <span>Before: <strong className="text-foreground">{entry.stockBefore}</strong></span>
-                                  <span>After: <strong className="text-foreground">{entry.stockAfter}</strong></span>
+                                  <span>Before: <strong className="text-foreground">{entry.previousStock}</strong></span>
+                                  <span>After: <strong className="text-foreground">{entry.newStock}</strong></span>
                                 </div>
-                                {entry.referenceId && (
-                                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded">Ref: {entry.referenceId.slice(0,8)}</span>
+                                {entry.reference && (
+                                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded">Ref: {entry.reference.slice(0,8)}</span>
                                 )}
                               </div>
                               {entry.notes && (
