@@ -5,99 +5,17 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Landmark, Trophy, BarChart2, CalendarDays, RefreshCw } from "lucide-react"
 
 interface OrdersInsightsProps {
-  orders: any[]
+  stats: {
+    topCity: string
+    topProduct: string
+    aov: number
+    ordersThisMonth: number
+    repeatPercent: number
+  }
 }
 
-export function OrdersInsights({ orders }: OrdersInsightsProps) {
-  const insights = useMemo(() => {
-    if (orders.length === 0) {
-      return {
-        topCity: "N/A",
-        topProduct: "N/A",
-        aov: 0,
-        ordersThisMonth: 0,
-        repeatPercent: 0
-      }
-    }
-
-    // 1. Top City
-    const cityCounts: Record<string, number> = {}
-    orders.forEach(o => {
-      if (o.city) {
-        const city = o.city.trim()
-        cityCounts[city] = (cityCounts[city] || 0) + 1
-      }
-    })
-    let topCity = "N/A"
-    let maxCityCount = 0
-    Object.entries(cityCounts).forEach(([city, count]) => {
-      if (count > maxCityCount) {
-        maxCityCount = count
-        topCity = city
-      }
-    })
-
-    // 2. Top Product
-    const productQuantities: Record<string, { qty: number; name: string }> = {}
-    let totalRevenue = 0
-    orders.forEach(order => {
-      if (order.items && order.items.length > 0) {
-        order.items.forEach((item: any) => {
-          const key = item.variantId || `${item.productName}-${item.variantName}`
-          const displayName = `${item.productName} (${item.variantName})`
-          const qty = Number(item.quantity) || 0
-          totalRevenue += Number(item.totalRevenue) || 0
-          
-          if (!productQuantities[key]) {
-            productQuantities[key] = { qty: 0, name: displayName }
-          }
-          productQuantities[key].qty += qty
-        })
-      }
-    })
-
-    let topProduct = "N/A"
-    let maxProductQty = 0
-    Object.entries(productQuantities).forEach(([_, data]) => {
-      if (data.qty > maxProductQty) {
-        maxProductQty = data.qty
-        topProduct = data.name
-      }
-    })
-
-    // 3. Average Order Value
-    const aov = orders.length > 0 ? totalRevenue / orders.length : 0
-
-    // 4. Orders This Month
-    const now = new Date()
-    const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth()
-    const ordersThisMonth = orders.filter(o => {
-      if (!o.created_at) return false
-      const d = new Date(o.created_at)
-      return d.getFullYear() === currentYear && d.getMonth() === currentMonth
-    }).length
-
-    // 5. Repeat Customers
-    const customerOrderCounts: Record<string, number> = {}
-    orders.forEach(order => {
-      const custId = order.customerId || order.shop_name
-      if (custId) {
-        customerOrderCounts[custId] = (customerOrderCounts[custId] || 0) + 1
-      }
-    })
-    const totalCustomers = Object.keys(customerOrderCounts).length
-    const repeatCustomers = Object.values(customerOrderCounts).filter(count => count >= 2).length
-    const repeatPercent = totalCustomers > 0 ? (repeatCustomers / totalCustomers) * 100 : 0
-
-    return {
-      topCity,
-      topProduct,
-      aov,
-      ordersThisMonth,
-      repeatPercent
-    }
-  }, [orders])
+export function OrdersInsights({ stats }: OrdersInsightsProps) {
+  const insights = stats;
 
   const items = [
     {

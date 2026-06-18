@@ -5,45 +5,17 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ShoppingCart, Clock3, CircleCheck, IndianRupee, Users, MapPin } from "lucide-react"
 
 interface OrdersStatsProps {
-  orders: any[]
+  stats: {
+    totalOrders: number
+    pendingOrders: number
+    completedOrders: number
+    totalRevenue: number
+    customersCount: number
+    citiesCount: number
+  }
 }
 
-export function OrdersStats({ orders }: OrdersStatsProps) {
-  const stats = useMemo(() => {
-    const totalOrders = orders.length
-    const pendingOrders = orders.filter(o => o.status?.toLowerCase() === "pending").length
-    const completedOrders = orders.filter(o => o.status?.toLowerCase() === "completed" || o.status?.toLowerCase() === "delivered").length
-
-    // Sum revenue from items to avoid stale 0 values
-    let totalRevenue = 0
-    const uniqueCustomers = new Set()
-    const uniqueCities = new Set()
-
-    orders.forEach(order => {
-      if (order.items && order.items.length > 0) {
-        order.items.forEach((item: any) => {
-          totalRevenue += Number(item.totalRevenue) || 0
-        })
-      }
-      if (order.customerId) {
-        uniqueCustomers.add(order.customerId)
-      } else if (order.shop_name) {
-        uniqueCustomers.add(order.shop_name)
-      }
-      if (order.city) {
-        uniqueCities.add(order.city.trim().toLowerCase())
-      }
-    })
-
-    return {
-      totalOrders,
-      pendingOrders,
-      completedOrders,
-      totalRevenue,
-      customersCount: uniqueCustomers.size,
-      citiesCount: uniqueCities.size
-    }
-  }, [orders])
+export function OrdersStats({ stats }: OrdersStatsProps) {
 
   const kpis = [
     {

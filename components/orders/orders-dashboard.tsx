@@ -15,11 +15,13 @@ import { getAllOrders, updateOrderStatus, deleteOrder, bulkUpdateOrderStatus, bu
 import { Button } from "../ui/button"
 
 interface OrdersDashboardProps {
-  initialOrders: any[]
+  initialOrdersData: { data: any[], totalCount: number }
+  initialStats: any
+  initialCities: string[]
   catalog: any[]
 }
 
-export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps) {
+export function OrdersDashboard({ initialOrdersData, initialStats, initialCities, catalog }: OrdersDashboardProps) {
   const queryClient = useQueryClient()
 
   // Filters State
@@ -36,15 +38,27 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
     return () => clearTimeout(timer)
   }, [searchTerm])
 
-  // React Query Fetch
-  const { data: serverOrders = initialOrders, isFetching } = useQuery({
-    queryKey: ["orders", debouncedSearch, statusFilter, cityFilter, dateFilter, productFilter],
+  // Sorting State
+  const [sortColumn, setSortColumn] = useState<"date" | "total" | null>("date")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
+  // React Query Fetch (Moved down to use all states)
+  const { data: serverData = initialOrdersData, isFetching } = useQuery({
+    queryKey: ["orders", debouncedSearch, statusFilter, cityFilter, dateFilter, productFilter, currentPage, sortColumn, sortDirection],
     queryFn: () => getAllOrders({
       search: debouncedSearch,
       status: statusFilter,
       city: cityFilter,
       date: dateFilter,
-      product: productFilter
+      product: productFilter,
+      page: currentPage,
+      limit: itemsPerPage,
+      sortColumn,
+      sortDirection
     }),
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000, // 1 minute
@@ -56,14 +70,6 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
   // Details sheet state
   const [activeSheetOrder, setActiveSheetOrder] = useState<any | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
-
-  // Sorting State
-  const [sortColumn, setSortColumn] = useState<"date" | "total" | null>("date")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
-
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
 
   // Flatten products from catalog category hierarchy for filtering dropdown
   const productsList = useMemo(() => {
@@ -83,16 +89,8 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
     return list
   }, [catalog])
 
-  // Get unique cities dynamically from the initial full dataset to populate dropdowns
-  const citiesList = useMemo(() => {
-    const set = new Set<string>()
-    initialOrders.forEach((o) => {
-      if (o.city) {
-        set.add(o.city.trim().toLowerCase())
-      }
-    })
-    return Array.from(set).sort()
-  }, [initialOrders])
+  // Get unique cities directly from the server
+  const citiesList = initialCities
 
   // Handle clearing filters
   const handleClearFilters = () => {
@@ -103,39 +101,15 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
     setProductFilter("all")
   }
 
-  // Filter Orders is now handled by the server via React Query
-  const filteredOrders = serverOrders
-
-  // Sort Orders
-  const sortedOrders = useMemo(() => {
-    const items = [...filteredOrders]
-    if (sortColumn === "total") {
-      items.sort((a, b) => {
-        const aRevenue = (a.items ?? []).reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
-        const bRevenue = (b.items ?? []).reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
-        return sortDirection === "asc" ? aRevenue - bRevenue : bRevenue - aRevenue
-      })
-    } else if (sortColumn === "date") {
-      items.sort((a, b) => {
-        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
-        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
-        return sortDirection === "asc" ? aTime - bTime : bTime - aTime
-      })
-    }
-    return items
-  }, [filteredOrders, sortColumn, sortDirection])
+  // Paginated Orders and Metadata
+  const paginatedOrders = serverData.data || []
+  const totalCount = serverData.totalCount || 0
+  const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage))
 
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
     setCurrentPage(1)
   }, [searchTerm, statusFilter, cityFilter, dateFilter, productFilter])
-
-  // Pagination bounds
-  const totalPages = Math.ceil(sortedOrders.length / itemsPerPage)
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage
-    return sortedOrders.slice(start, start + itemsPerPage)
-  }, [sortedOrders, currentPage])
 
   // Selection handlers
   const handleSelectOrder = (id: string, selected: boolean) => {
@@ -295,54 +269,72 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
   }
 
   // CSV Exporter
-  const handleExportCSV = () => {
-    if (filteredOrders.length === 0) return
-    const headers = [
-      "Order ID",
-      "Customer Shop",
-      "City",
-      "Address",
-      "Status",
-      "Items Count",
-      "Total Weight (kg)",
-      "Total Revenue (₹)",
-      "Total Cost (₹)",
-      "Total Profit (₹)",
-      "Created At",
-    ]
-    const csvRows = [headers.join(",")]
-    filteredOrders.forEach((o) => {
-      const items = o.items ?? []
-      const totalRevenue = items.reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
-      const totalCost = items.reduce((acc: number, i: any) => acc + Number(i.totalCost), 0)
-      const totalProfit = items.reduce((acc: number, i: any) => acc + Number(i.totalProfit), 0)
-      const weight = Number(o.total_khakhra_kg) || 0
+  const handleExportCSV = async () => {
+    if (totalCount === 0) return
+    toast.loading("Preparing CSV export...")
+    try {
+      const allData = await getAllOrders({
+        search: debouncedSearch,
+        status: statusFilter,
+        city: cityFilter,
+        date: dateFilter,
+        product: productFilter,
+        page: 1,
+        limit: 10000 // Fetch up to 10k orders for export
+      })
+      const exportOrders = allData.data || []
 
-      const row = [
-        o.id.toUpperCase(),
-        `"${(o.customer?.shop_name || o.shop_name || "").replace(/"/g, '""')}"`,
-        `"${(o.city || "").replace(/"/g, '""')}"`,
-        `"${(o.address || "").replace(/"/g, '""')}"`,
-        o.status || "pending",
-        items.length,
-        weight.toFixed(2),
-        Math.round(totalRevenue),
-        Math.round(totalCost),
-        Math.round(totalProfit),
-        o.created_at ? new Date(o.created_at).toISOString() : "",
+      const headers = [
+        "Order ID",
+        "Customer Shop",
+        "City",
+        "Address",
+        "Status",
+        "Items Count",
+        "Total Weight (kg)",
+        "Total Revenue (₹)",
+        "Total Cost (₹)",
+        "Total Profit (₹)",
+        "Created At",
       ]
-      csvRows.push(row.join(","))
-    })
+      const csvRows = [headers.join(",")]
+      exportOrders.forEach((o: any) => {
+        const items = o.items ?? []
+        const totalRevenue = items.reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
+        const totalCost = items.reduce((acc: number, i: any) => acc + Number(i.totalCost), 0)
+        const totalProfit = items.reduce((acc: number, i: any) => acc + Number(i.totalProfit), 0)
+        const weight = Number(o.total_khakhra_kg) || 0
 
-    const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n")
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
-    link.setAttribute("download", `jalaram_orders_${new Date().toISOString().slice(0, 10)}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    toast.success("CSV export downloaded successfully")
+        const row = [
+          o.id.toUpperCase(),
+          `"${(o.customer?.shop_name || o.shop_name || "").replace(/"/g, '""')}"`,
+          `"${(o.city || "").replace(/"/g, '""')}"`,
+          `"${(o.address || "").replace(/"/g, '""')}"`,
+          o.status || "pending",
+          items.length,
+          weight.toFixed(2),
+          Math.round(totalRevenue),
+          Math.round(totalCost),
+          Math.round(totalProfit),
+          o.created_at ? new Date(o.created_at).toISOString() : "",
+        ]
+        csvRows.push(row.join(","))
+      })
+
+      const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n")
+      const encodedUri = encodeURI(csvContent)
+      const link = document.createElement("a")
+      link.setAttribute("href", encodedUri)
+      link.setAttribute("download", `jalaram_orders_${new Date().toISOString().slice(0, 10)}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      toast.dismiss()
+      toast.success("CSV export downloaded successfully")
+    } catch (error) {
+      toast.dismiss()
+      toast.error("Failed to export CSV")
+    }
   }
 
   const hasActiveFilters =
@@ -357,14 +349,14 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
       {/* Header */}
       <OrdersHeader
         onExport={handleExportCSV}
-        isExportDisabled={filteredOrders.length === 0}
+        isExportDisabled={totalCount === 0}
       />
 
       {/* Stats KPI Cards */}
-      <OrdersStats orders={filteredOrders} />
+      <OrdersStats stats={initialStats} />
 
       {/* Quick Insights Strip */}
-      <OrdersInsights orders={filteredOrders} />
+      <OrdersInsights stats={initialStats} />
 
       {/* Filters Bar */}
       <OrdersFilters
@@ -424,9 +416,9 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
               <span className="text-xs text-muted-foreground font-medium">
                 Showing <span className="font-semibold text-foreground">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
                 <span className="font-semibold text-foreground">
-                  {Math.min(currentPage * itemsPerPage, filteredOrders.length)}
+                  {Math.min(currentPage * itemsPerPage, totalCount)}
                 </span>{" "}
-                of <span className="font-semibold text-foreground">{filteredOrders.length}</span> orders
+                of <span className="font-semibold text-foreground">{totalCount}</span> orders
               </span>
               <div className="flex items-center gap-1.5">
                 <Button

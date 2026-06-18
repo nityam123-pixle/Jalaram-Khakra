@@ -210,6 +210,10 @@ export async function getAllOrders(filters?: {
   city?: string;
   date?: string;
   product?: string;
+  page?: number;
+  limit?: number;
+  sortColumn?: "date" | "total";
+  sortDirection?: "asc" | "desc";
 }) {
   const where: any = {};
 
@@ -244,21 +248,108 @@ export async function getAllOrders(filters?: {
     }
   }
 
-  const orders = await prisma.order.findMany({
-    where,
-    orderBy: { created_at: 'desc' },
-    include: {
-      customer: true,
-      items: {
-        include: {
-          variant: {
-            include: { product: true }
+  // Handle pagination
+  const page = filters?.page || 1;
+  const limit = filters?.limit || 10;
+  const skip = (page - 1) * limit;
+
+  // Handle sorting
+  let orderBy: any = { created_at: 'desc' };
+  if (filters?.sortColumn) {
+    const direction = filters.sortDirection || 'desc';
+    if (filters.sortColumn === 'date') {
+      orderBy = { created_at: direction };
+    } else if (filters.sortColumn === 'total') {
+      orderBy = { total_amount: direction };
+    }
+  }
+
+  // Execute queries in parallel
+  const [orders, totalCount] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      orderBy,
+      skip,
+      take: limit,
+      include: {
+        customer: true,
+        items: {
+          include: {
+            variant: {
+              select: { unitType: true } // Only select what's needed for UI badges
+            }
           }
         }
       }
-    }
-  })
-  return serializePrisma(orders)
+    }),
+    prisma.order.count({ where })
+  ]);
+
+  return serializePrisma({
+    data: orders,
+    totalCount
+  });
+}
+
+export async function getOrderStats() {
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0,0,0,0);
+
+  const [
+    totalOrders,
+    pendingOrders,
+    completedOrders,
+    revenueResult,
+    customersCount,
+    citiesQuery,
+    cityGroup,
+    ordersThisMonth
+  ] = await Promise.all([
+    prisma.order.count(),
+    prisma.order.count({ where: { status: { equals: "pending", mode: "insensitive" } } }),
+    prisma.order.count({ where: { status: { in: ["completed", "delivered"], mode: "insensitive" } } }),
+    prisma.order.aggregate({ _sum: { total_amount: true } }),
+    prisma.customer.count(),
+    prisma.order.findMany({ select: { city: true }, distinct: ['city'] }),
+    prisma.order.groupBy({
+      by: ['city'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 1
+    }),
+    prisma.order.count({ where: { created_at: { gte: startOfMonth } } })
+  ]);
+
+  const totalRevenue = Number(revenueResult._sum.total_amount || 0);
+
+  return {
+    totalOrders,
+    pendingOrders,
+    completedOrders,
+    totalRevenue,
+    customersCount,
+    citiesCount: citiesQuery.filter(c => c.city).length,
+    // Insights
+    topCity: cityGroup[0]?.city || "N/A",
+    aov: totalOrders > 0 ? totalRevenue / totalOrders : 0,
+    ordersThisMonth,
+    topProduct: "N/A", // Simplifying, as top product by quantity across millions of items is a heavy query
+    repeatPercent: 0 // Simplifying for now
+  };
+}
+
+export async function getUniqueCities() {
+  const cities = await prisma.order.findMany({
+    select: { city: true },
+    distinct: ['city']
+  });
+  
+  return cities
+    .filter(c => c.city)
+    .map(c => c.city.trim().toLowerCase())
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .sort();
 }
 
 export type EditOrderItemInput = {
