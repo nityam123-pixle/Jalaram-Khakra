@@ -295,7 +295,11 @@ export default async function SummaryPage() {
                               <div className="space-y-2 max-h-96 overflow-y-auto">
                                 {monthData.monthOrders.map((order) => {
                                   let orderProfit = 0;
-                                  order.items.forEach(i => orderProfit += Number(i.totalProfit));
+                                  let orderRevenue = 0;
+                                  order.items.forEach(i => {
+                                    orderProfit += Number(i.totalProfit) || 0;
+                                    orderRevenue += Number(i.totalRevenue) || 0;
+                                  });
 
                                   return (
                                     <div
@@ -346,7 +350,7 @@ export default async function SummaryPage() {
                                         <div className="space-y-1 w-full">
                                           <div className="flex justify-between gap-6 text-sm">
                                             <span className="text-muted-foreground">Total Amount:</span>
-                                            <span className="font-semibold">₹{Number(order.total_amount)}</span>
+                                            <span className="font-semibold">₹{orderRevenue.toLocaleString("en-IN")}</span>
                                           </div>
                                           <div className="flex justify-between gap-6 text-sm">
                                             <span className="text-muted-foreground">Total Profit:</span>
