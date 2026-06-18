@@ -11,9 +11,11 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { updateInvoiceStatus } from "../actions/invoice"
+import { updateInvoiceStatus, deleteInvoice } from "../actions/invoice"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { Trash2 } from "lucide-react"
 
 export function InvoicesClient({ initialData, stats, currentPage: _currentPage, currentSearch, currentStatus: _currentStatus }: any) {
   const [data, setData] = useState(initialData)
@@ -23,6 +25,7 @@ export function InvoicesClient({ initialData, stats, currentPage: _currentPage, 
 
   const [search, setSearch] = useState(currentSearch || "")
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const loadData = async (page: number, s: string, status: string) => {
     startTransition(async () => {
@@ -60,6 +63,19 @@ export function InvoicesClient({ initialData, stats, currentPage: _currentPage, 
       toast.error("Failed to update invoice status")
     } finally {
       setUpdatingId(null)
+    }
+  }
+
+  const handleDelete = async (invoiceId: string) => {
+    setDeletingId(invoiceId)
+    try {
+      await deleteInvoice(invoiceId)
+      toast.success("Invoice deleted successfully")
+      loadData(currentPage, search, currentStatus)
+    } catch (e) {
+      toast.error("Failed to delete invoice")
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -206,6 +222,30 @@ export function InvoicesClient({ initialData, stats, currentPage: _currentPage, 
                         </Button>
                       </>
                     )}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" title="Delete Invoice" disabled={deletingId === invoice.id}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete invoice {invoice.invoiceNumber}. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction 
+                            onClick={() => handleDelete(invoice.id)}
+                            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>

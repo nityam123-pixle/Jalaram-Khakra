@@ -130,6 +130,32 @@ export async function updateInvoiceStatus(id: string, status: "PAID" | "PENDING"
   return serializePrisma(invoice);
 }
 
+export async function deleteInvoice(id: string) {
+  // First get the invoice to check if it's an order invoice
+  const invoice = await prisma.invoice.findUnique({
+    where: { id }
+  });
+
+  if (!invoice) throw new Error("Invoice not found");
+
+  // Delete the invoice
+  await prisma.invoice.delete({
+    where: { id }
+  });
+
+  revalidatePath('/invoices');
+  revalidatePath('/summary');
+  revalidatePath('/orders');
+  if (invoice.customerId) {
+    revalidatePath(`/customers`);
+  }
+  if (invoice.orderId) {
+    revalidatePath(`/orders/${invoice.orderId}`);
+  }
+
+  return { success: true };
+}
+
 export async function generateInvoiceForOrder(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -175,8 +201,15 @@ export async function generateInvoiceForOrder(orderId: string) {
     total: Number(subtotal),
   };
 
-  const { generateInvoicePdf } = await import('../../lib/pdf-generator');
-  const pdfUrl = await generateInvoicePdf(invoiceData);
+  // We don't generate the PDF file on disk anymore
+  // Instead, the PDF is generated dynamically via the API route
+  // The API route needs the invoice ID, but we don't have it yet, so we will update it after creation
+  const pdfUrl = '';
+
+  const paymentStatus = 
+    (order.status.toLowerCase() === 'completed' || order.status.toLowerCase() === 'delivered') 
+      ? 'PAID' 
+      : 'PENDING';
 
   const newInvoice = await prisma.invoice.create({
     data: {
@@ -186,14 +219,24 @@ export async function generateInvoiceForOrder(orderId: string) {
       subtotal: Number(subtotal),
       tax: 0,
       total: Number(subtotal),
-      pdfUrl
+      paymentStatus,
+      pdfUrl: '' // Will update immediately
     }
+  });
+
+  const finalPdfUrl = `/api/pdf/invoice/${newInvoice.id}`;
+  
+  await prisma.invoice.update({
+    where: { id: newInvoice.id },
+    data: { pdfUrl: finalPdfUrl }
   });
 
   revalidatePath('/orders');
   revalidatePath(`/orders/${order.id}`);
   revalidatePath('/invoices');
-  return serializePrisma(newInvoice);
+  
+  // Return updated invoice
+  return serializePrisma({ ...newInvoice, pdfUrl: finalPdfUrl });
 }
 
 export async function generateMonthlyStatement(customerId: string, month: number, year: number) {
@@ -241,8 +284,10 @@ export async function generateMonthlyStatement(customerId: string, month: number
     totalOrders: customer.orders.length
   };
 
-  const { generateMonthlyStatementPdf } = await import('../../lib/pdf-generator');
-  const pdfUrl = await generateMonthlyStatementPdf(statementData, customerId, monthKey);
+  // We no longer generate statements to disk
+  // We use the dynamic API route for monthly statements
+  // API needs customerId, month (1-indexed for the API route), and year
+  const pdfUrl = `/api/pdf/statement?customerId=${customerId}&month=${month + 1}&year=${year}`;
 
   const currentYear = new Date().getFullYear();
   const sequence = await prisma.invoiceSequence.upsert({
@@ -345,8 +390,9 @@ export async function generateGlobalMonthlyReport(month: number, year: number) {
     orders: ordersList
   };
 
-  const { generateGlobalMonthlyReportPdf } = await import('../../lib/pdf-generator');
-  const pdfUrl = await generateGlobalMonthlyReportPdf(reportData, monthKey);
+  // No longer generating files to disk
+  // API uses 1-indexed month
+  const pdfUrl = `/api/pdf/report?month=${month + 1}&year=${year}`;
 
   return pdfUrl;
 }

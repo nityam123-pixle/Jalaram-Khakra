@@ -5,6 +5,7 @@ import { format, parse } from "date-fns"
 import { FileText, Download, Printer, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -115,13 +116,22 @@ export function MonthlyOrdersSheet({ monthKey, onClose }: MonthlyOrdersSheetProp
     ? format(parse(monthKey, 'yyyy-MM', new Date()), 'MMMM yyyy') 
     : ""
 
+  const totalOrdersInMonth = data ? data.reduce((acc, customer) => acc + customer.orders.length, 0) : 0;
+
   return (
     <Sheet open={!!monthKey} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="sm:max-w-[700px] w-[90vw] overflow-y-auto">
         <SheetHeader className="pb-4 border-b">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <SheetTitle className="text-2xl">Orders for {formattedMonth}</SheetTitle>
+              <SheetTitle className="text-2xl flex items-center gap-2">
+                Orders for {formattedMonth}
+                {data && data.length > 0 && (
+                  <Badge variant="secondary" className="text-sm">
+                    {totalOrdersInMonth} {totalOrdersInMonth === 1 ? 'Order' : 'Orders'}
+                  </Badge>
+                )}
+              </SheetTitle>
               <SheetDescription>
                 Grouped by customer. Generate monthly statements from here.
               </SheetDescription>

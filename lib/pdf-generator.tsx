@@ -1,7 +1,5 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, renderToFile } from '@react-pdf/renderer';
-import path from 'path';
-import fs from 'fs';
+import { Document, Page, Text, View, StyleSheet, renderToStream } from '@react-pdf/renderer';
 
 // Create styles
 const styles = StyleSheet.create({
@@ -376,20 +374,8 @@ const InvoiceDocument = ({ data }: { data: InvoiceData }) => (
   </Document>
 );
 
-export async function generateInvoicePdf(invoiceData: InvoiceData): Promise<string> {
-  // Ensure public/invoices directory exists
-  const invoicesDir = path.join(process.cwd(), 'public', 'invoices');
-  if (!fs.existsSync(invoicesDir)) {
-    fs.mkdirSync(invoicesDir, { recursive: true });
-  }
-
-  const fileName = `${invoiceData.invoiceNumber}.pdf`;
-  const filePath = path.join(invoicesDir, fileName);
-
-  await renderToFile(<InvoiceDocument data={invoiceData} />, filePath);
-
-  // Return the public URL path
-  return `/invoices/${fileName}`;
+export async function renderInvoiceToStream(invoiceData: InvoiceData): Promise<NodeJS.ReadableStream> {
+  return await renderToStream(<InvoiceDocument data={invoiceData} />);
 }
 
 export interface MonthlyStatementData {
@@ -493,19 +479,8 @@ const MonthlyStatementDocument = ({ data }: { data: MonthlyStatementData }) => (
   </Document>
 );
 
-export async function generateMonthlyStatementPdf(statementData: MonthlyStatementData, customerId: string, monthKey: string): Promise<string> {
-  const statementsDir = path.join(process.cwd(), 'public', 'statements');
-  if (!fs.existsSync(statementsDir)) {
-    fs.mkdirSync(statementsDir, { recursive: true });
-  }
-
-  const safeCustomerName = statementData.customerName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  const fileName = `stmt_${safeCustomerName}_${monthKey}.pdf`;
-  const filePath = path.join(statementsDir, fileName);
-
-  await renderToFile(<MonthlyStatementDocument data={statementData} />, filePath);
-
-  return `/statements/${fileName}`;
+export async function renderMonthlyStatementToStream(statementData: MonthlyStatementData): Promise<NodeJS.ReadableStream> {
+  return await renderToStream(<MonthlyStatementDocument data={statementData} />);
 }
 
 export interface GlobalMonthlyReportData {
@@ -629,16 +604,6 @@ const GlobalMonthlyReportDocument = ({ data }: { data: GlobalMonthlyReportData }
   </Document>
 );
 
-export async function generateGlobalMonthlyReportPdf(reportData: GlobalMonthlyReportData, monthKey: string): Promise<string> {
-  const reportsDir = path.join(process.cwd(), 'public', 'reports');
-  if (!fs.existsSync(reportsDir)) {
-    fs.mkdirSync(reportsDir, { recursive: true });
-  }
-
-  const fileName = `monthly_report_${monthKey}.pdf`;
-  const filePath = path.join(reportsDir, fileName);
-
-  await renderToFile(<GlobalMonthlyReportDocument data={reportData} />, filePath);
-
-  return `/reports/${fileName}`;
+export async function renderGlobalMonthlyReportToStream(reportData: GlobalMonthlyReportData): Promise<NodeJS.ReadableStream> {
+  return await renderToStream(<GlobalMonthlyReportDocument data={reportData} />);
 }

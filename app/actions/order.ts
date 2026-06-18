@@ -209,32 +209,14 @@ export async function createOrder(data: CreateOrderInput) {
   })
 
   try {
-    const pdfUrl = await generateInvoicePdf({
-      invoiceNumber: result.invoiceNumber,
-      invoiceDate: new Date().toLocaleDateString('en-IN'),
-      dueDate: data.dueDate ? new Date(data.dueDate).toLocaleDateString('en-IN') : undefined,
-      customerName: result.customer.shop_name,
-      customerAddress: result.customer.address || '',
-      customerCity: result.customer.city,
-      customerPhone: result.customer.phone || undefined,
-      items: orderItemsData.map(item => ({
-        name: `${item.productName} (${item.variantName})`,
-        quantity: item.quantity,
-        rate: item.unitSellingPrice,
-        amount: item.totalRevenue
-      })),
-      subtotal: totalAmount,
-      tax: 0,
-      total: totalAmount
-    });
-
+    const finalPdfUrl = `/api/pdf/invoice/${result.invoice.id}`;
     await prisma.invoice.update({
       where: { id: result.invoice.id },
-      data: { pdfUrl }
+      data: { pdfUrl: finalPdfUrl }
     });
+    result.invoice.pdfUrl = finalPdfUrl;
   } catch (err) {
-    console.error("[createOrder] Failed to generate PDF invoice:", err);
-    // Continue without failing the order creation
+    console.error("[createOrder] Failed to update PDF invoice URL:", err);
   }
 
   revalidateAllPaths()
