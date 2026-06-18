@@ -14,6 +14,15 @@ import { Badge } from "@/components/ui/badge"
 import { Settings, Package, ShieldCheck, ToggleRight, RotateCw, AlertTriangle } from "lucide-react"
 
 export default async function InventorySettingsPage() {
+  // Self-healing: clean up any orphaned inventory levels for variants that aren't tracked
+  await prisma.inventoryLevel.deleteMany({
+    where: {
+      variant: {
+        inventoryTracked: false
+      }
+    }
+  })
+
   // Fetch ALL variants (active ones) to configure tracking
   const allVariants = await prisma.productVariant.findMany({
     where: { isActive: true },
@@ -37,7 +46,7 @@ export default async function InventorySettingsPage() {
     return acc
   }, {} as Record<string, typeof allVariants>)
 
-  const trackedCount = allVariants.filter(v => v.inventory !== null).length
+  const trackedCount = allVariants.filter(v => v.inventoryTracked).length
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 max-w-5xl">
@@ -86,7 +95,7 @@ export default async function InventorySettingsPage() {
                 </TableHeader>
                 <TableBody>
                   {variants.map((variant) => {
-                    const isTracked = !!variant.inventory
+                    const isTracked = variant.inventoryTracked
                     
                     return (
                       <TableRow key={variant.id}>
@@ -102,7 +111,7 @@ export default async function InventorySettingsPage() {
                             <div className="flex justify-end">
                               <ReorderPointEditor 
                                 variantId={variant.id} 
-                                currentReorderPoint={variant.inventory.reorderPoint} 
+                                currentReorderPoint={variant.inventory?.reorderPoint ?? 10} 
                               />
                             </div>
                           ) : (
@@ -110,7 +119,7 @@ export default async function InventorySettingsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-muted-foreground">
-                          {isTracked ? variant.inventory.availableStock : "-"}
+                          {isTracked ? variant.inventory?.availableStock ?? 0 : "-"}
                         </TableCell>
                       </TableRow>
                     )

@@ -22,6 +22,11 @@ export async function getInventoryDashboard() {
     categoryInventory,
   ] = await Promise.all([
     prisma.inventoryLevel.findMany({
+      where: {
+        variant: {
+          inventoryTracked: true,
+        },
+      },
       include: {
         variant: {
           include: {
@@ -132,6 +137,11 @@ export async function getInventoryDashboard() {
 
 export async function getCurrentInventory() {
   const levels = await prisma.inventoryLevel.findMany({
+    where: {
+      variant: {
+        inventoryTracked: true,
+      },
+    },
     include: {
       variant: {
         include: {
@@ -749,6 +759,11 @@ export async function getStockLedger(options?: {
 
 export async function getLowStockAlerts() {
   const levels = await prisma.inventoryLevel.findMany({
+    where: {
+      variant: {
+        inventoryTracked: true,
+      },
+    },
     include: {
       variant: {
         include: {
@@ -844,6 +859,10 @@ export async function toggleInventoryTracking(
           reorderPoint: 10,
         },
         update: {},
+      });
+    } else {
+      await tx.inventoryLevel.deleteMany({
+        where: { variantId },
       });
     }
   });
