@@ -376,7 +376,9 @@ export async function getOrderStats() {
     customersCount,
     citiesQuery,
     cityGroup,
-    ordersThisMonth
+    ordersThisMonth,
+    topProductGroup,
+    customerOrderGroups
   ] = await Promise.all([
     prisma.order.count(),
     prisma.order.count({ where: { status: { equals: "pending", mode: "insensitive" } } }),
@@ -390,10 +392,30 @@ export async function getOrderStats() {
       orderBy: { _count: { id: 'desc' } },
       take: 1
     }),
-    prisma.order.count({ where: { created_at: { gte: startOfMonth } } })
+    prisma.order.count({ where: { created_at: { gte: startOfMonth } } }),
+    prisma.orderItem.groupBy({
+      by: ['productName', 'variantName'],
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: 1
+    }),
+    prisma.order.groupBy({
+      by: ['customerId'],
+      _count: { id: true }
+    })
   ]);
 
   const totalRevenue = Number(revenueResult._sum.total_amount || 0);
+
+  const topProduct = topProductGroup[0]
+    ? `${topProductGroup[0].productName} (${topProductGroup[0].variantName})`
+    : "N/A";
+
+  const totalCustomersWithOrders = customerOrderGroups.length;
+  const repeatCustomersCount = customerOrderGroups.filter(g => g._count.id >= 2).length;
+  const repeatPercent = totalCustomersWithOrders > 0
+    ? Math.round((repeatCustomersCount / totalCustomersWithOrders) * 100)
+    : 0;
 
   return {
     totalOrders,
@@ -406,8 +428,8 @@ export async function getOrderStats() {
     topCity: cityGroup[0]?.city || "N/A",
     aov: totalOrders > 0 ? totalRevenue / totalOrders : 0,
     ordersThisMonth,
-    topProduct: "N/A", // Simplifying, as top product by quantity across millions of items is a heavy query
-    repeatPercent: 0 // Simplifying for now
+    topProduct,
+    repeatPercent
   };
 }
 
