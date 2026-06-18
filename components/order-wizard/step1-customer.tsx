@@ -157,7 +157,7 @@ export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer,
                   {c.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {c.phone}</span>}
                 </div>
                 <div className="flex gap-2 mt-3 text-xs">
-                  <Badge variant="secondary">{c.totalOrders} Orders</Badge>
+                  <Badge variant="secondary">{c._count?.orders ?? c.totalOrders} Orders</Badge>
                   {c.lastOrderAt && <Badge variant="outline">Last: {format(new Date(c.lastOrderAt), 'dd MMM yyyy')}</Badge>}
                 </div>
               </CardContent>

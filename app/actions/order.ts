@@ -204,8 +204,48 @@ export async function deleteOrder(id: string) {
   revalidatePath("/orders")
 }
 
-export async function getAllOrders() {
+export async function getAllOrders(filters?: {
+  search?: string;
+  status?: string;
+  city?: string;
+  date?: string;
+  product?: string;
+}) {
+  const where: any = {};
+
+  if (filters) {
+    if (filters.status && filters.status !== "all") {
+      where.status = { equals: filters.status, mode: "insensitive" };
+    }
+    if (filters.city && filters.city !== "all") {
+      where.city = { equals: filters.city, mode: "insensitive" };
+    }
+    if (filters.date) {
+      const dateStart = new Date(filters.date);
+      dateStart.setUTCHours(0, 0, 0, 0);
+      const dateEnd = new Date(filters.date);
+      dateEnd.setUTCHours(23, 59, 59, 999);
+      where.created_at = { gte: dateStart, lte: dateEnd };
+    }
+    if (filters.product && filters.product !== "all") {
+      where.items = {
+        some: {
+          variantId: filters.product
+        }
+      };
+    }
+    if (filters.search) {
+      where.OR = [
+        { shop_name: { contains: filters.search, mode: "insensitive" } },
+        { city: { contains: filters.search, mode: "insensitive" } },
+        { id: { contains: filters.search, mode: "insensitive" } },
+        { customer: { shop_name: { contains: filters.search, mode: "insensitive" } } },
+      ];
+    }
+  }
+
   const orders = await prisma.order.findMany({
+    where,
     orderBy: { created_at: 'desc' },
     include: {
       customer: true,

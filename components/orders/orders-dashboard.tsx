@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { OrdersHeader } from "./orders-header"
 import { OrdersStats } from "./orders-stats"
 import { OrdersInsights } from "./orders-insights"
@@ -10,7 +11,7 @@ import { OrdersMobileCards } from "./orders-mobile-cards"
 import { OrderDetailsSheet } from "./order-details-sheet"
 import { OrdersEmptyState } from "./orders-empty-state"
 import { toast } from "sonner"
-import { updateOrderStatus, deleteOrder, bulkUpdateOrderStatus, bulkDeleteOrders } from "@/app/actions/order"
+import { getAllOrders, updateOrderStatus, deleteOrder, bulkUpdateOrderStatus, bulkDeleteOrders } from "@/app/actions/order"
 import { Button } from "../ui/button"
 
 interface OrdersDashboardProps {
@@ -19,20 +20,35 @@ interface OrdersDashboardProps {
 }
 
 export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps) {
-  // Main local state for orders
-  const [orders, setOrders] = useState(initialOrders)
-
-  // Sync state if initialOrders updates from server router.refresh()
-  useEffect(() => {
-    setOrders(initialOrders)
-  }, [initialOrders])
+  const queryClient = useQueryClient()
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [cityFilter, setCityFilter] = useState("all")
   const [dateFilter, setDateFilter] = useState("")
   const [productFilter, setProductFilter] = useState("all")
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // React Query Fetch
+  const { data: serverOrders = initialOrders, isFetching } = useQuery({
+    queryKey: ["orders", debouncedSearch, statusFilter, cityFilter, dateFilter, productFilter],
+    queryFn: () => getAllOrders({
+      search: debouncedSearch,
+      status: statusFilter,
+      city: cityFilter,
+      date: dateFilter,
+      product: productFilter
+    }),
+    placeholderData: keepPreviousData,
+    staleTime: 60 * 1000, // 1 minute
+  })
 
   // Checkbox Selection State
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -67,16 +83,16 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
     return list
   }, [catalog])
 
-  // Get unique cities dynamically
+  // Get unique cities dynamically from the initial full dataset to populate dropdowns
   const citiesList = useMemo(() => {
     const set = new Set<string>()
-    orders.forEach((o) => {
+    initialOrders.forEach((o) => {
       if (o.city) {
         set.add(o.city.trim().toLowerCase())
       }
     })
     return Array.from(set).sort()
-  }, [orders])
+  }, [initialOrders])
 
   // Handle clearing filters
   const handleClearFilters = () => {
@@ -87,48 +103,8 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
     setProductFilter("all")
   }
 
-  // Filter Orders
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      // 1. Search search term
-      const shopName = (order.customer?.shop_name || order.shop_name || "").toLowerCase()
-      const city = (order.city || "").toLowerCase()
-      const shortId = order.id.slice(0, 8).toLowerCase()
-      const searchLower = searchTerm.toLowerCase()
-      const matchesSearch =
-        !searchTerm ||
-        shopName.includes(searchLower) ||
-        city.includes(searchLower) ||
-        shortId.includes(searchLower)
-
-      // 2. Status filter
-      const matchesStatus =
-        statusFilter === "all" ||
-        order.status?.toLowerCase() === statusFilter.toLowerCase()
-
-      // 3. City filter
-      const matchesCity =
-        cityFilter === "all" ||
-        order.city?.toLowerCase() === cityFilter.toLowerCase()
-
-      // 4. Date filter
-      let matchesDate = true
-      if (dateFilter) {
-        const orderDate = new Date(order.created_at).toISOString().split("T")[0]
-        matchesDate = orderDate === dateFilter
-      }
-
-      // 5. Product filter
-      let matchesProduct = true
-      if (productFilter !== "all") {
-        matchesProduct = (order.items ?? []).some(
-          (item: any) => item.variantId === productFilter
-        )
-      }
-
-      return matchesSearch && matchesStatus && matchesCity && matchesDate && matchesProduct
-    })
-  }, [orders, searchTerm, statusFilter, cityFilter, dateFilter, productFilter])
+  // Filter Orders is now handled by the server via React Query
+  const filteredOrders = serverOrders
 
   // Sort Orders
   const sortedOrders = useMemo(() => {
@@ -194,64 +170,128 @@ export function OrdersDashboard({ initialOrders, catalog }: OrdersDashboardProps
     setIsSheetOpen(true)
   }
 
-  const handleStatusChange = async (id: string, status: string) => {
-    const previousOrders = [...orders]
-    setOrders((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, status } : o))
-    )
-    try {
+  // Mutations
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string, status: string }) => {
       await updateOrderStatus(id, status)
+    },
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["orders"] })
+      const previousOrders = queryClient.getQueryData(["orders"])
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+        if (!old) return old
+        return old.map(o => o.id === id ? { ...o, status } : o)
+      })
       toast.success(`Order #${id.slice(0, 8).toUpperCase()} marked as ${status}`)
-    } catch (e) {
-      setOrders(previousOrders)
+      return { previousOrders }
+    },
+    onError: (err, variables, context) => {
       toast.error("Failed to update status")
+      if (context?.previousOrders) {
+        queryClient.setQueriesData({ queryKey: ["orders"] }, context.previousOrders)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] })
     }
+  })
+
+  const handleStatusChange = (id: string, status: string) => {
+    updateStatusMutation.mutate({ id, status })
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this order?")) return
-    const previousOrders = [...orders]
-    setOrders((prev) => prev.filter((o) => o.id !== id))
-    setSelectedIds((prev) => prev.filter((x) => x !== id))
-    try {
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
       await deleteOrder(id)
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["orders"] })
+      const previousOrders = queryClient.getQueryData(["orders"])
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+        if (!old) return old
+        return old.filter(o => o.id !== id)
+      })
+      setSelectedIds((prev) => prev.filter((x) => x !== id))
       toast.success("Order deleted successfully")
-    } catch (e) {
-      setOrders(previousOrders)
+      return { previousOrders }
+    },
+    onError: (err, id, context) => {
       toast.error("Failed to delete order")
+      if (context?.previousOrders) {
+        queryClient.setQueriesData({ queryKey: ["orders"] }, context.previousOrders)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] })
     }
+  })
+
+  const handleDelete = (id: string) => {
+    if (!confirm("Are you sure you want to delete this order?")) return
+    deleteMutation.mutate(id)
   }
 
   // Bulk actions
-  const handleBulkStatusChange = async (status: string) => {
-    const previousOrders = [...orders]
-    const idsToUpdate = [...selectedIds]
-    setOrders((prev) =>
-      prev.map((o) => (idsToUpdate.includes(o.id) ? { ...o, status } : o))
-    )
-    setSelectedIds([])
-    try {
-      await bulkUpdateOrderStatus(idsToUpdate, status)
-      toast.success(`Updated status for ${idsToUpdate.length} orders`)
-    } catch (e) {
-      setOrders(previousOrders)
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[], status: string }) => {
+      await bulkUpdateOrderStatus(ids, status)
+    },
+    onMutate: async ({ ids, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["orders"] })
+      const previousOrders = queryClient.getQueryData(["orders"])
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+        if (!old) return old
+        return old.map(o => ids.includes(o.id) ? { ...o, status } : o)
+      })
+      setSelectedIds([])
+      toast.success(`Updated status for ${ids.length} orders`)
+      return { previousOrders }
+    },
+    onError: (err, variables, context) => {
       toast.error("Failed to batch update orders")
+      if (context?.previousOrders) {
+        queryClient.setQueriesData({ queryKey: ["orders"] }, context.previousOrders)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] })
     }
+  })
+
+  const handleBulkStatusChange = (status: string) => {
+    bulkStatusMutation.mutate({ ids: [...selectedIds], status })
   }
 
-  const handleBulkDelete = async () => {
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await bulkDeleteOrders(ids)
+    },
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: ["orders"] })
+      const previousOrders = queryClient.getQueryData(["orders"])
+      queryClient.setQueriesData({ queryKey: ["orders"] }, (old: any[]) => {
+        if (!old) return old
+        return old.filter(o => !ids.includes(o.id))
+      })
+      setSelectedIds([])
+      toast.success(`Deleted ${ids.length} orders successfully`)
+      return { previousOrders }
+    },
+    onError: (err, variables, context) => {
+      toast.error("Failed to batch delete orders")
+      if (context?.previousOrders) {
+        queryClient.setQueriesData({ queryKey: ["orders"] }, context.previousOrders)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] })
+    }
+  })
+
+  const handleBulkDelete = () => {
     const idsToDelete = [...selectedIds]
     if (!confirm(`Are you sure you want to delete ${idsToDelete.length} orders?`)) return
-    const previousOrders = [...orders]
-    setOrders((prev) => prev.filter((o) => !idsToDelete.includes(o.id)))
-    setSelectedIds([])
-    try {
-      await bulkDeleteOrders(idsToDelete)
-      toast.success(`Deleted ${idsToDelete.length} orders successfully`)
-    } catch (e) {
-      setOrders(previousOrders)
-      toast.error("Failed to batch delete orders")
-    }
+    bulkDeleteMutation.mutate(idsToDelete)
   }
 
   // CSV Exporter

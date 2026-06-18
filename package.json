@@ -46,6 +46,8 @@
         "@radix-ui/react-tooltip": "^1.2.8",
         "@space-man/react-theme-animation": "^2.1.0",
         "@supabase/supabase-js": "latest",
+        "@tanstack/react-query": "^5.101.0",
+        "@tanstack/react-query-devtools": "^5.101.0",
         "@tanstack/react-table": "^8.21.3",
         "autoprefixer": "^10.4.20",
         "canvas-confetti": "^1.9.4",

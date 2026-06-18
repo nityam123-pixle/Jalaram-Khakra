@@ -9,6 +9,11 @@ export async function searchCustomers(query: string) {
     const customers = await prisma.customer.findMany({
       where: { isArchived: false },
       orderBy: { lastOrderAt: 'desc' },
+      include: {
+        _count: {
+          select: { orders: true }
+        }
+      },
       take: 20
     })
     return serializePrisma(customers)
@@ -26,6 +31,11 @@ export async function searchCustomers(query: string) {
       ]
     },
     orderBy: { lastOrderAt: 'desc' },
+    include: {
+      _count: {
+        select: { orders: true }
+      }
+    },
     take: 20
   })
   return serializePrisma(customers)
