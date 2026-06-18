@@ -75,11 +75,14 @@ model ProductVariant {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  product        Product          @relation(fields: [productId], references: [id])
-  pricingRules   ProductPricing[]
-  pricingHistory PricingHistory[]
-  orderItems     OrderItem[]
-  inventory      InventoryLevel?
+  product            Product             @relation(fields: [productId], references: [id])
+  pricingRules       ProductPricing[]
+  pricingHistory     PricingHistory[]
+  orderItems         OrderItem[]
+  inventory          InventoryLevel?
+  purchaseOrderItems PurchaseOrderItem[]
+  receivingLogs      StockReceivingLog[]
+  stockLedger        StockLedger[]
 
   @@map("product_variants")
 }
@@ -90,6 +93,7 @@ model InventoryLevel {
   warehouseId    String? // For future multi-warehouse expansion
   availableStock Int      @default(0)
   reservedStock  Int      @default(0)
+  reorderPoint   Int      @default(10) // Configurable per variant via Settings UI
   updatedAt      DateTime @updatedAt
 
   variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
@@ -247,4 +251,147 @@ model OrderItem {
   variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
   @@map("order_items")
+}
+
+// ----------------------------------------------------------------------------
+// INVENTORY MANAGEMENT SYSTEM
+// ----------------------------------------------------------------------------
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  IN_TRANSIT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum ShipmentStatus {
+  PENDING
+  IN_TRANSIT
+  ARRIVED
+  RECEIVING
+  COMPLETED
+  CANCELLED
+}
+
+enum StockAction {
+  RECEIVED_FROM_SUPPLIER
+  SOLD_THROUGH_ORDER
+  DAMAGED
+  MANUAL_ADJUSTMENT
+  RETURN_RECEIVED
+  RETURN_SENT
+  OPENING_STOCK
+}
+
+model Supplier {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  phone       String?
+  whatsapp    String?
+  city        String?
+  address     String?
+  gstNumber   String?
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  purchaseOrders   PurchaseOrder[]
+  incomingShipments IncomingShipment[]
+
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  poNumber         String              @unique
+  supplierId       String              @db.Uuid
+  status           PurchaseOrderStatus @default(DRAFT)
+  expectedDelivery DateTime?
+  transportDetails String?
+  invoiceNumber    String?
+  invoiceDate      DateTime?           @db.Date
+  invoiceAmount    Float?
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  supplier  Supplier            @relation(fields: [supplierId], references: [id])
+  items     PurchaseOrderItem[]
+  shipments IncomingShipment[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purchaseOrderId  String  @db.Uuid
+  variantId        String  @db.Uuid
+  quantityOrdered  Float
+  quantityReceived Float   @default(0)
+  unitCostPrice    Float
+  notes            String?
+
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  variant       ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model IncomingShipment {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipmentNumber  String         @unique
+  purchaseOrderId String?        @db.Uuid
+  supplierId      String?        @db.Uuid
+  transportName   String?
+  vehicleNumber   String?
+  expectedArrival DateTime?      @db.Date
+  actualArrival   DateTime?      @db.Date
+  status          ShipmentStatus @default(PENDING)
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier?         @relation(fields: [supplierId], references: [id])
+  receivingLogs StockReceivingLog[]
+
+  @@map("incoming_shipments")
+}
+
+model StockReceivingLog {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipmentId       String   @db.Uuid
+  variantId        String   @db.Uuid
+  quantityExpected Float
+  quantityReceived Float
+  quantityDamaged  Float    @default(0)
+  notes            String?
+  receivedAt       DateTime @default(now())
+
+  shipment IncomingShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  variant  ProductVariant   @relation(fields: [variantId], references: [id])
+
+  @@map("stock_receiving_logs")
+}
+
+model StockLedger {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variantId     String      @db.Uuid
+  action        StockAction
+  reference     String? // Order ID, PO number, shipment number, etc.
+  quantity      Float // Positive = stock in, Negative = stock out
+  previousStock Float
+  newStock      Float
+  notes         String?
+  createdAt     DateTime    @default(now())
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([variantId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("stock_ledger")
 }

@@ -23,6 +23,8 @@ export function SiteHeader() {
   const pathname = usePathname() || "/"
   const title = titles[pathname] ?? "Khakhra Orders"
 
+  const isEditPage = pathname.startsWith("/orders/") && pathname.endsWith("/edit")
+
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 lg:px-6">
       <div className="flex w-full items-center justify-between gap-2">
@@ -33,9 +35,11 @@ export function SiteHeader() {
         </div>
         <div className="flex items-center gap-1">
           <Button size="sm" variant="outline" className="gap-1.5" asChild>
-            <Link href="/orders/new">
+            <Link href={isEditPage ? "#add-item-section" : "/orders/new"}>
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">New order</span>
+              <span className="hidden sm:inline">
+                {isEditPage ? "Add more items" : "New order"}
+              </span>
             </Link>
           </Button>
           <ThemeToggle />

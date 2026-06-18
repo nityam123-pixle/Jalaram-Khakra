@@ -131,6 +131,32 @@ export async function createOrder(data: CreateOrderInput) {
       }
     })
 
+    // Update inventory for tracked variants
+    for (const item of orderItemsData) {
+      const inventory = await tx.inventoryLevel.findUnique({
+        where: { variantId: item.variantId }
+      })
+
+      if (inventory) {
+        const updatedInventory = await tx.inventoryLevel.update({
+          where: { variantId: item.variantId },
+          data: { availableStock: { decrement: item.quantity } }
+        })
+
+        await tx.stockLedger.create({
+          data: {
+            variantId: item.variantId,
+            action: "SOLD_THROUGH_ORDER",
+            quantity: -item.quantity,
+            stockBefore: inventory.availableStock,
+            stockAfter: updatedInventory.availableStock,
+            referenceId: order.id,
+            notes: `Order #${order.id.slice(0,8)} created for ${customer.shop_name}`
+          }
+        })
+      }
+    }
+
     console.log("[createOrder] Order created successfully:", order.id)
     return order
   })
@@ -277,6 +303,37 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
 
   // Update in a transaction
   const result = await prisma.$transaction(async (tx) => {
+    // 0. Fetch existing items to restore stock
+    const existingItems = await tx.orderItem.findMany({
+      where: { orderId }
+    })
+
+    // Restore stock for old items
+    for (const item of existingItems) {
+      if (item.variantId) {
+        const inventory = await tx.inventoryLevel.findUnique({
+          where: { variantId: item.variantId }
+        })
+        if (inventory) {
+          const updated = await tx.inventoryLevel.update({
+            where: { variantId: item.variantId },
+            data: { availableStock: { increment: item.quantity } }
+          })
+          await tx.stockLedger.create({
+            data: {
+              variantId: item.variantId,
+              action: "MANUAL_ADJUSTMENT",
+              quantity: item.quantity,
+              stockBefore: inventory.availableStock,
+              stockAfter: updated.availableStock,
+              referenceId: orderId,
+              notes: `Order #${orderId.slice(0,8)} edited. Restoring old stock.`
+            }
+          })
+        }
+      }
+    }
+
     // 1. Delete existing items
     await tx.orderItem.deleteMany({
       where: { orderId }
@@ -286,6 +343,30 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
     await tx.orderItem.createMany({
       data: orderItemsData
     })
+
+    // Deduct stock for new items
+    for (const item of orderItemsData) {
+      const inventory = await tx.inventoryLevel.findUnique({
+        where: { variantId: item.variantId }
+      })
+      if (inventory) {
+        const updated = await tx.inventoryLevel.update({
+          where: { variantId: item.variantId },
+          data: { availableStock: { decrement: item.quantity } }
+        })
+        await tx.stockLedger.create({
+          data: {
+            variantId: item.variantId,
+            action: "SOLD_THROUGH_ORDER",
+            quantity: -item.quantity,
+            stockBefore: inventory.availableStock,
+            stockAfter: updated.availableStock,
+            referenceId: orderId,
+            notes: `Order #${orderId.slice(0,8)} edited. Deducting new stock.`
+          }
+        })
+      }
+    }
 
     // 3. Update order totals
     const order = await tx.order.update({
@@ -315,4 +396,45 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
   revalidatePath("/summary")
 
   return serializePrisma(result)
+}
+
+export async function bulkUpdateOrderStatus(ids: string[], status: string) {
+  console.log("[bulkUpdateOrderStatus] Updating IDs:", ids, "to status:", status)
+
+  if (!ids || ids.length === 0) {
+    throw new Error("No order IDs provided")
+  }
+
+  const result = await prisma.order.updateMany({
+    where: { id: { in: ids } },
+    data: { status }
+  })
+
+  ids.forEach(id => {
+    revalidatePath(`/orders/${id}`)
+    revalidatePath(`/orders/${id}/edit`)
+  })
+  revalidatePath("/orders")
+  revalidatePath("/")
+  revalidatePath("/summary")
+
+  return result.count
+}
+
+export async function bulkDeleteOrders(ids: string[]) {
+  console.log("[bulkDeleteOrders] Deleting IDs:", ids)
+
+  if (!ids || ids.length === 0) {
+    throw new Error("No order IDs provided")
+  }
+
+  const result = await prisma.order.deleteMany({
+    where: { id: { in: ids } }
+  })
+
+  revalidatePath("/orders")
+  revalidatePath("/")
+  revalidatePath("/summary")
+
+  return result.count
 }

@@ -97,3 +97,38 @@ export async function getSummaryOrders() {
   })
   return serializePrisma(orders)
 }
+
+export async function getDashboardData() {
+  const [orders, catalog, customers] = await Promise.all([
+    prisma.order.findMany({
+      orderBy: { created_at: 'desc' },
+      include: {
+        customer: true,
+        items: true
+      }
+    }),
+    prisma.productCategory.findMany({
+      include: {
+        products: {
+          include: {
+            variants: {
+              include: {
+                pricingRules: true
+              }
+            }
+          }
+        }
+      }
+    }),
+    prisma.customer.findMany({
+      where: { isArchived: false }
+    })
+  ])
+
+  return serializePrisma({
+    orders,
+    catalog,
+    customers
+  })
+}
+

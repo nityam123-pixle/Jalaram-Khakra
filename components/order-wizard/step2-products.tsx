@@ -190,7 +190,7 @@ export function Step2Products({
 
             {/* Builder Area */}
             {activeVariant && (
-              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-5 animate-in slide-in-from-bottom-2">
+              <div className="bg-muted/40 dark:bg-card/50 p-6 rounded-xl border border-border space-y-5 animate-in slide-in-from-bottom-2">
                 {!pricingRule ? (
                    <div className="flex flex-col items-center justify-center py-6 text-slate-500 space-y-2">
                      <AlertCircle className="w-8 h-8 text-amber-500" />
@@ -237,9 +237,9 @@ export function Step2Products({
       </div>
 
       {/* Right: Cart Summary (30% width on Desktop, Sticky Bottom on Mobile) */}
-      <div className="md:col-span-5 lg:col-span-4 flex flex-col gap-4 fixed bottom-0 left-0 right-0 md:relative bg-white md:bg-transparent p-4 md:p-0 border-t md:border-0 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none z-50">
-        <div className="bg-white rounded-xl md:border shadow-sm flex flex-col md:h-[calc(100vh-140px)]">
-          <div className="p-4 border-b bg-slate-50 flex justify-between items-center hidden md:flex rounded-t-xl">
+      <div className="md:col-span-5 lg:col-span-4 flex flex-col gap-4 fixed bottom-0 left-0 right-0 md:relative bg-card dark:bg-card p-4 md:p-0 border-t border-border md:border-0 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.5)] md:shadow-none z-50">
+        <div className="bg-card dark:bg-card rounded-xl border border-border shadow-sm flex flex-col md:h-[calc(100vh-140px)]">
+          <div className="p-4 border-b border-border bg-muted/40 flex justify-between items-center hidden md:flex rounded-t-xl">
             <h3 className="font-semibold flex items-center gap-2">
               <ShoppingCart className="w-4 h-4" /> Cart ({items.length})
             </h3>
@@ -250,7 +250,7 @@ export function Step2Products({
               <div className="text-center text-muted-foreground py-10">Cart is empty</div>
             ) : (
               items.map((item) => (
-                <div key={item.id} className="border rounded-lg p-3 text-sm relative group bg-white shadow-sm">
+                <div key={item.id} className="border border-border rounded-lg p-3 text-sm relative group bg-card shadow-sm">
                   <div className="font-medium pr-8">{item.productName}</div>
                   <div className="text-muted-foreground text-xs mt-0.5">{item.variantName}</div>
                   <div className="flex justify-between items-center mt-2">
@@ -261,7 +261,7 @@ export function Step2Products({
                   </div>
                   
                   {/* Actions */}
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm p-1 rounded-md">
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 dark:bg-background/90 border border-border backdrop-blur-sm p-1 rounded-md">
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(item)}>
                       <Edit2 className="w-3 h-3 text-blue-600" />
                     </Button>
@@ -274,7 +274,7 @@ export function Step2Products({
             )}
           </div>
 
-          <div className="md:p-4 md:bg-slate-50 rounded-b-xl flex flex-col sm:flex-row md:flex-col gap-4 items-center justify-between">
+          <div className="md:p-4 md:bg-muted/40 border-t border-border rounded-b-xl flex flex-col sm:flex-row md:flex-col gap-4 items-center justify-between">
             <div className="flex-1 w-full md:w-auto">
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-muted-foreground font-medium">Items</span>

@@ -350,7 +350,7 @@ export function EditOrderClient({ order, catalog }: { order: any, catalog: any[]
         </div>
 
         {/* Add More Items Form Section */}
-        <div className="p-6 bg-muted/20 border-t border-border space-y-4">
+        <div id="add-item-section" className="p-6 bg-muted/20 border-t border-border space-y-4 scroll-mt-20">
           <h4 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
             <Plus className="w-4 h-4" /> Add More Items
           </h4>
