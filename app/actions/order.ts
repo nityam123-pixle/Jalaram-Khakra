@@ -67,17 +67,29 @@ export async function createOrder(data: CreateOrderInput) {
     if (!variant) throw new Error(`Variant ${itemInput.variantId} not found`)
 
     const pricing = variant.pricingRules[0]
-    if (!pricing) throw new Error(`No pricing configured for ${variant.product.name} ${variant.name}`)
-
-    const costPrice = Number(pricing.costPrice)
+    let costPrice = 0
     const sellingPrice = itemInput.sellingPrice
 
-    // Basic validation
-    if (pricing.minSellingPrice && sellingPrice < Number(pricing.minSellingPrice)) {
-      throw new Error(`Selling price ${sellingPrice} is below minimum ${pricing.minSellingPrice}`)
+    // Allow adjustments or special items to bypass pricing rules
+    const isAdjustment = variant.product.name.toLowerCase().includes('outstanding balance') || 
+                         variant.product.category.name.toLowerCase().includes('adjustment')
+
+    if (!pricing && !isAdjustment) {
+      throw new Error(`No pricing configured for ${variant.product.name} ${variant.name}`)
     }
-    if (pricing.maxSellingPrice && sellingPrice > Number(pricing.maxSellingPrice)) {
-      throw new Error(`Selling price ${sellingPrice} is above maximum ${pricing.maxSellingPrice}`)
+
+    if (pricing) {
+      costPrice = Number(pricing.costPrice)
+      // Basic validation
+      if (pricing.minSellingPrice && sellingPrice < Number(pricing.minSellingPrice)) {
+        throw new Error(`Selling price ${sellingPrice} is below minimum ${pricing.minSellingPrice}`)
+      }
+      if (pricing.maxSellingPrice && sellingPrice > Number(pricing.maxSellingPrice)) {
+        throw new Error(`Selling price ${sellingPrice} is above maximum ${pricing.maxSellingPrice}`)
+      }
+    } else {
+      // For adjustments without a pricing rule, costPrice equals sellingPrice so profit is 0
+      costPrice = sellingPrice
     }
 
     const totalRevenue = sellingPrice * itemInput.quantity

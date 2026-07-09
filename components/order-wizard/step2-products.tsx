@@ -100,9 +100,13 @@ export function Step2Products({
     const qty = getQty(variant.id)
     const priceStr = getPrice(variant.id, variant.pricingRule)
     const price = Number(priceStr)
-    const costPrice = Number(variant.pricingRule?.costPrice || 0)
     
-    if (qty <= 0 || price <= 0) return
+    if (isNaN(qty) || isNaN(price) || qty <= 0 || price <= 0) return
+
+    const isAdjustment = variant.productName.toLowerCase().includes('outstanding balance') || 
+                         variant.categoryName.toLowerCase().includes('adjustment')
+    
+    const costPrice = isAdjustment ? price : Number(variant.pricingRule?.costPrice || 0)
 
     const revenue = price * qty
     const profit = revenue - (costPrice * qty)
