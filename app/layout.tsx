@@ -2,6 +2,8 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Outfit, JetBrains_Mono } from "next/font/google"
 
+export const dynamic = "force-dynamic"
+
 import { AppSidebar } from "@/components/app-sidebar"
 import { Providers } from "@/components/providers"
 import { SiteHeader } from "@/components/site-header"
