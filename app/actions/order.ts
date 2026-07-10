@@ -70,12 +70,11 @@ export async function createOrder(data: CreateOrderInput) {
     let costPrice = 0
     const sellingPrice = itemInput.sellingPrice
 
-    // Allow adjustments or special items to bypass pricing rules
     const isAdjustment = variant.product.name.toLowerCase().includes('outstanding balance') || 
                          variant.product.category.name.toLowerCase().includes('adjustment')
 
     if (!pricing && !isAdjustment) {
-      throw new Error(`No pricing configured for ${variant.product.name} ${variant.name}`)
+      console.warn(`[createOrder] WARNING: No pricing configured for ${variant.product.name} ${variant.name}. Using costPrice = 0.`)
     }
 
     if (pricing) {
@@ -88,8 +87,8 @@ export async function createOrder(data: CreateOrderInput) {
         throw new Error(`Selling price ${sellingPrice} is above maximum ${pricing.maxSellingPrice}`)
       }
     } else {
-      // For adjustments without a pricing rule, costPrice equals sellingPrice so profit is 0
-      costPrice = sellingPrice
+      // For adjustments, costPrice = sellingPrice (0 profit). For missing pricing, costPrice = 0 (100% profit).
+      costPrice = isAdjustment ? sellingPrice : 0
     }
 
     const totalRevenue = sellingPrice * itemInput.quantity
