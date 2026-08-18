@@ -436,6 +436,8 @@ export async function getAllOrders(filters?: {
   status?: string;
   city?: string;
   date?: string;
+  fromDate?: string;
+  toDate?: string;
   product?: string;
   page?: number;
   limit?: number;
@@ -451,13 +453,35 @@ export async function getAllOrders(filters?: {
     if (filters.city && filters.city !== "all") {
       where.city = { equals: filters.city, mode: "insensitive" };
     }
-    if (filters.date) {
-      const dateStart = new Date(filters.date);
-      dateStart.setUTCHours(0, 0, 0, 0);
-      const dateEnd = new Date(filters.date);
-      dateEnd.setUTCHours(23, 59, 59, 999);
-      where.created_at = { gte: dateStart, lte: dateEnd };
+
+    // Date range filtering (From Date -> To Date)
+    if (filters.fromDate || filters.toDate || filters.date) {
+      const dateCond: any = {};
+      if (filters.fromDate) {
+        const start = new Date(filters.fromDate);
+        start.setUTCHours(0, 0, 0, 0);
+        dateCond.gte = start;
+      } else if (filters.date) {
+        const start = new Date(filters.date);
+        start.setUTCHours(0, 0, 0, 0);
+        dateCond.gte = start;
+      }
+
+      if (filters.toDate) {
+        const end = new Date(filters.toDate);
+        end.setUTCHours(23, 59, 59, 999);
+        dateCond.lte = end;
+      } else if (filters.date) {
+        const end = new Date(filters.date);
+        end.setUTCHours(23, 59, 59, 999);
+        dateCond.lte = end;
+      }
+
+      if (Object.keys(dateCond).length > 0) {
+        where.created_at = dateCond;
+      }
     }
+
     if (filters.product && filters.product !== "all") {
       where.items = {
         some: {
@@ -465,13 +489,48 @@ export async function getAllOrders(filters?: {
         }
       };
     }
-    if (filters.search) {
-      where.OR = [
-        { shop_name: { contains: filters.search, mode: "insensitive" } },
-        { city: { contains: filters.search, mode: "insensitive" } },
-        { id: { contains: filters.search, mode: "insensitive" } },
-        { customer: { shop_name: { contains: filters.search, mode: "insensitive" } } },
-      ];
+
+    // Multi-Token, Order ID, and Product-aware Fuzzy Search
+    if (filters.search && filters.search.trim()) {
+      const rawSearch = filters.search.trim();
+      const tokens = rawSearch.split(/\s+/).filter(Boolean);
+
+      const tokenConditions: any[] = [];
+
+      for (const rawToken of tokens) {
+        const token = rawToken.replace(/^[#]/, "");
+        const orClauses: any[] = [
+          { shop_name: { contains: token, mode: "insensitive" as const } },
+          { city: { contains: token, mode: "insensitive" as const } },
+          { status: { contains: token, mode: "insensitive" as const } },
+          { customer: { is: { shop_name: { contains: token, mode: "insensitive" as const } } } },
+          { customer: { is: { phone: { contains: token, mode: "insensitive" as const } } } },
+          { customer: { is: { city: { contains: token, mode: "insensitive" as const } } } },
+          { items: { some: { productName: { contains: token, mode: "insensitive" as const } } } },
+          { items: { some: { categoryName: { contains: token, mode: "insensitive" as const } } } },
+          { items: { some: { variantName: { contains: token, mode: "insensitive" as const } } } }
+        ];
+
+        // If token looks like a partial UUID (hex or hyphens, min 4 chars), find matching order IDs
+        if (/^[0-9a-fA-F-]{4,}$/.test(token)) {
+          try {
+            const matchingIds: { id: string }[] = await prisma.$queryRaw`SELECT id FROM orders WHERE id::text ILIKE ${'%' + token + '%'}`;
+            if (matchingIds.length > 0) {
+              orClauses.push({ id: { in: matchingIds.map(m => m.id) } });
+            }
+          } catch (e) {
+            // Ignore queryRaw errors if any
+          }
+        }
+
+        tokenConditions.push({ OR: orClauses });
+      }
+
+      if (tokenConditions.length === 1) {
+        where.OR = tokenConditions[0].OR;
+      } else if (tokenConditions.length > 1) {
+        where.AND = tokenConditions;
+      }
     }
   }
 

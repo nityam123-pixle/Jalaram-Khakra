@@ -45,12 +45,13 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [cityFilter, setCityFilter] = useState("all")
-  const [dateFilter, setDateFilter] = useState("")
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
   const [productFilter, setProductFilter] = useState("all")
 
-  // Debounce search
+  // Snappy Debounce search (150ms)
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 150)
     return () => clearTimeout(timer)
   }, [searchTerm])
 
@@ -62,14 +63,15 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
-  // React Query Fetch (Moved down to use all states)
+  // React Query Fetch (with fast caching)
   const { data: serverData = initialOrdersData, isFetching } = useQuery({
-    queryKey: ["orders", debouncedSearch, statusFilter, cityFilter, dateFilter, productFilter, currentPage, sortColumn, sortDirection],
+    queryKey: ["orders", debouncedSearch, statusFilter, cityFilter, fromDate, toDate, productFilter, currentPage, sortColumn, sortDirection],
     queryFn: () => getAllOrders({
       search: debouncedSearch,
       status: statusFilter,
       city: cityFilter,
-      date: dateFilter,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
       product: productFilter,
       page: currentPage,
       limit: itemsPerPage,
@@ -77,7 +79,7 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
       sortDirection
     }),
     placeholderData: keepPreviousData,
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 60 * 1000,
   })
 
   // Checkbox Selection State
@@ -100,7 +102,6 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
     }
     setDeleteConfirmOpen(false)
     setDeleteTarget(null)
-    // Clear stuck body pointer-events style
     document.body.style.pointerEvents = ""
   }
 
@@ -123,14 +124,24 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   }, [catalog])
 
   // Get unique cities directly from the server
-  const citiesList = initialCities
+  const citiesList = initialCities || []
+
+  // Check if any filters are active
+  const hasActiveFilters =
+    Boolean(searchTerm) ||
+    statusFilter !== "all" ||
+    cityFilter !== "all" ||
+    Boolean(fromDate) ||
+    Boolean(toDate) ||
+    productFilter !== "all"
 
   // Handle clearing filters
   const handleClearFilters = () => {
     setSearchTerm("")
     setStatusFilter("all")
     setCityFilter("all")
-    setDateFilter("")
+    setFromDate("")
+    setToDate("")
     setProductFilter("all")
   }
 
@@ -142,7 +153,7 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, statusFilter, cityFilter, dateFilter, productFilter])
+  }, [searchTerm, statusFilter, cityFilter, fromDate, toDate, productFilter])
 
   // Selection handlers
   const handleSelectOrder = (id: string, selected: boolean) => {
@@ -347,7 +358,8 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
         search: debouncedSearch,
         status: statusFilter,
         city: cityFilter,
-        date: dateFilter,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
         product: productFilter,
         page: 1,
         limit: 10000 // Fetch up to 10k orders for export
@@ -408,14 +420,6 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
     }
   }
 
-  const hasActiveFilters = Boolean(
-    searchTerm ||
-    statusFilter !== "all" ||
-    cityFilter !== "all" ||
-    dateFilter ||
-    productFilter !== "all"
-  )
-
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
@@ -438,13 +442,16 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
         setStatusFilter={setStatusFilter}
         cityFilter={cityFilter}
         setCityFilter={setCityFilter}
-        dateFilter={dateFilter}
-        setDateFilter={setDateFilter}
+        fromDate={fromDate}
+        setFromDate={setFromDate}
+        toDate={toDate}
+        setToDate={setToDate}
         productFilter={productFilter}
         setProductFilter={setProductFilter}
         cities={citiesList}
         products={productsList}
         onClearFilters={handleClearFilters}
+        totalCount={totalCount}
       />
 
       {/* Desktop vs Mobile layouts */}

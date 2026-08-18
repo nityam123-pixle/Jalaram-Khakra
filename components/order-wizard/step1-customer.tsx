@@ -1,21 +1,34 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
-import { Search, Plus, MapPin, Phone, History, ArrowRight, Loader2, RefreshCw } from "lucide-react"
+import { useState, useEffect, useMemo, useTransition } from "react"
+import { Search, Plus, MapPin, Phone, History, ArrowRight, Loader2, RefreshCw, X, UserCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { searchCustomers, getCustomerHistory, createCustomer } from "@/app/actions/customers"
+import { getAllCustomersForSelect, getCustomerHistory, createCustomer } from "@/app/actions/customers"
 import type { SelectedCustomer, OrderItemData } from "./wizard"
 import { format } from "date-fns"
-
 import { getOrderTotals } from "@/lib/order-utils"
+
+// Ragged / subsequence fuzzy matcher
+function raggedFuzzyMatch(needle: string, haystack: string): boolean {
+  if (!needle) return true
+  if (!haystack) return false
+  let nIdx = 0
+  let hIdx = 0
+  while (nIdx < needle.length && hIdx < haystack.length) {
+    if (needle[nIdx] === haystack[hIdx]) {
+      nIdx++
+    }
+    hIdx++
+  }
+  return nIdx === needle.length
+}
 
 export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer, preloadItems?: OrderItemData[]) => void }) {
   const [query, setQuery] = useState("")
-  const [customers, setCustomers] = useState<any[]>([])
-  const [isPending, startTransition] = useTransition()
+  const [allCustomers, setAllCustomers] = useState<any[]>([])
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true)
   
   const [selectedCustId, setSelectedCustId] = useState<string | null>(null)
   const [history, setHistory] = useState<any[]>([])
@@ -26,32 +39,116 @@ export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer,
   const [newCust, setNewCust] = useState({ shop_name: "", city: "", phone: "", address: "" })
   const [creating, setCreating] = useState(false)
 
-  // Fetch initial customers
+  // Fetch all customers on mount once for instant client-side searching
   useEffect(() => {
-    handleSearch("")
+    let isMounted = true
+    async function loadCustomers() {
+      setIsLoadingCustomers(true)
+      try {
+        const data = await getAllCustomersForSelect()
+        if (isMounted) {
+          setAllCustomers(data || [])
+        }
+      } catch (err) {
+        console.error("Failed to fetch customers:", err)
+      } finally {
+        if (isMounted) {
+          setIsLoadingCustomers(false)
+        }
+      }
+    }
+    loadCustomers()
+    return () => {
+      isMounted = false
+    }
   }, [])
 
-  const handleSearch = (q: string) => {
-    setQuery(q)
-    startTransition(async () => {
-      const results = await searchCustomers(q)
-      setCustomers(results)
+  // Fast, multi-token ragged fuzzy filter
+  const filteredCustomers = useMemo(() => {
+    const raw = query.trim().toLowerCase()
+    if (!raw) return allCustomers
+
+    const tokens = raw.split(/\s+/).filter(Boolean)
+
+    return allCustomers.filter((c) => {
+      const shop = (c.shop_name || "").toLowerCase()
+      const city = (c.city || "").toLowerCase()
+      const phoneDigits = (c.phone || "").replace(/\D/g, "")
+      const address = (c.address || "").toLowerCase()
+      const combined = `${shop} ${city} ${phoneDigits} ${address}`
+
+      // Every token must match in some way
+      return tokens.every((token) => {
+        // Direct substring match anywhere in combined text
+        if (combined.includes(token)) return true
+        
+        // Match numeric phone segment
+        const tokenDigits = token.replace(/\D/g, "")
+        if (tokenDigits && phoneDigits.includes(tokenDigits)) return true
+
+        // Ragged / subsequence fuzzy match on shop name or city
+        if (raggedFuzzyMatch(token, shop) || raggedFuzzyMatch(token, city)) return true
+
+        return false
+      })
+    }).sort((a, b) => {
+      const aShop = (a.shop_name || "").toLowerCase()
+      const bShop = (b.shop_name || "").toLowerCase()
+      const aCity = (a.city || "").toLowerCase()
+      const bCity = (b.city || "").toLowerCase()
+
+      // 1. Exact shop name starts with query
+      const aStarts = aShop.startsWith(raw)
+      const bStarts = bShop.startsWith(raw)
+      if (aStarts && !bStarts) return -1
+      if (!aStarts && bStarts) return 1
+
+      // 2. Shop name includes query
+      const aIncludes = aShop.includes(raw)
+      const bIncludes = bShop.includes(raw)
+      if (aIncludes && !bIncludes) return -1
+      if (!aIncludes && bIncludes) return 1
+
+      // 3. City includes query
+      const aCityMatch = aCity.includes(raw)
+      const bCityMatch = bCity.includes(raw)
+      if (aCityMatch && !bCityMatch) return -1
+      if (!aCityMatch && bCityMatch) return 1
+
+      // 4. Order count ranking
+      const aCount = a._count?.orders ?? a.totalOrders ?? 0
+      const bCount = b._count?.orders ?? b.totalOrders ?? 0
+      return bCount - aCount
     })
-  }
+  }, [allCustomers, query])
 
   const selectCustomer = async (cust: any) => {
     setSelectedCustId(cust.id)
     setIsLoadingHistory(true)
-    const hist = await getCustomerHistory(cust.id)
-    setHistory(hist)
-    setIsLoadingHistory(false)
+    try {
+      const hist = await getCustomerHistory(cust.id)
+      setHistory(hist || [])
+    } catch (err) {
+      console.error("Failed to load history:", err)
+      setHistory([])
+    } finally {
+      setIsLoadingHistory(false)
+    }
   }
 
   const handleCreateCustomer = async () => {
-    if (!newCust.shop_name || !newCust.city) return
+    if (!newCust.shop_name.trim() || !newCust.city.trim()) return
     setCreating(true)
     try {
-      const created = await createCustomer(newCust)
+      const created = await createCustomer({
+        shop_name: newCust.shop_name.trim(),
+        city: newCust.city.trim(),
+        phone: newCust.phone?.trim() || undefined,
+        address: newCust.address?.trim() || undefined
+      })
+      
+      // Update local state and proceed
+      setAllCustomers(prev => [created, ...prev])
       onNext(created)
     } catch (e: any) {
       alert(e.message || "Failed to create customer")
@@ -61,7 +158,7 @@ export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer,
   }
 
   const handleFastReorder = (order: any) => {
-    const cust = customers.find(c => c.id === selectedCustId)
+    const cust = allCustomers.find(c => c.id === selectedCustId)
     if (!cust) return
     
     // Transform order items back to OrderItemData safely
@@ -105,21 +202,38 @@ export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer,
         <div className="grid gap-4 max-w-lg">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground">Shop / Business Name *</label>
-            <Input value={newCust.shop_name} onChange={e => setNewCust({...newCust, shop_name: e.target.value})} placeholder="e.g. Jalaram Bakery" />
+            <Input 
+              value={newCust.shop_name} 
+              onChange={e => setNewCust({...newCust, shop_name: e.target.value})} 
+              placeholder="e.g. Jalaram Bakery" 
+              autoFocus
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground">City *</label>
-            <Input value={newCust.city} onChange={e => setNewCust({...newCust, city: e.target.value})} placeholder="e.g. Surat" />
+            <Input 
+              value={newCust.city} 
+              onChange={e => setNewCust({...newCust, city: e.target.value})} 
+              placeholder="e.g. Surat" 
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground">Phone Number</label>
-            <Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} placeholder="+91..." />
+            <Input 
+              value={newCust.phone} 
+              onChange={e => setNewCust({...newCust, phone: e.target.value})} 
+              placeholder="+91..." 
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground">Delivery Address</label>
-            <Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} placeholder="Full address" />
+            <Input 
+              value={newCust.address} 
+              onChange={e => setNewCust({...newCust, address: e.target.value})} 
+              placeholder="Full address" 
+            />
           </div>
-          <Button disabled={creating || !newCust.shop_name || !newCust.city} onClick={handleCreateCustomer} className="mt-2">
+          <Button disabled={creating || !newCust.shop_name || !newCust.city} onClick={handleCreateCustomer} className="mt-2 font-semibold">
             {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             Save & Continue to Products
           </Button>
@@ -128,7 +242,7 @@ export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer,
     )
   }
 
-  const selectedData = customers.find(c => c.id === selectedCustId)
+  const selectedData = allCustomers.find(c => c.id === selectedCustId)
 
   return (
     <div className="grid lg:grid-cols-12 gap-6 animate-in fade-in">
@@ -136,76 +250,111 @@ export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer,
       <div className="lg:col-span-7 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold tracking-tight">Select Customer</h2>
-            <p className="text-xs text-muted-foreground">Search from existing clients or create a new one</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold tracking-tight">Select Customer</h2>
+              {!isLoadingCustomers && (
+                <span className="text-[11px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border/50">
+                  {filteredCustomers.length} {filteredCustomers.length === 1 ? 'client' : 'clients'}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Type any letters, city, or phone digits to search</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => setIsNew(true)} className="gap-1 text-xs">
             <Plus className="w-3.5 h-3.5" /> Add Customer
           </Button>
         </div>
         
+        {/* Search Bar with live spinner and clear button */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <Input 
-            placeholder="Search by shop name, city, phone..." 
-            className="pl-9 bg-card border-border/70 text-sm"
+            placeholder="Search by name, city, phone (e.g. 'ashish ahm' or 'gokul')..." 
+            className="pl-9 pr-9 bg-card border-border/70 text-sm focus-visible:ring-1"
             value={query}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
           />
-          {isPending && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />}
+          {isLoadingCustomers ? (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center">
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : query ? (
+            <button 
+              onClick={() => setQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              type="button"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          ) : null}
         </div>
 
+        {/* Customer List */}
         <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
-          {customers.length === 0 && !isPending && (
+          {isLoadingCustomers ? (
+            <div className="py-16 text-center space-y-3">
+              <Loader2 className="w-8 h-8 mx-auto animate-spin text-primary/70" />
+              <p className="text-xs text-muted-foreground font-medium">Loading customer database...</p>
+            </div>
+          ) : filteredCustomers.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-xl bg-muted/20">
               <Search className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
-              <p className="text-sm font-medium">No customers found</p>
-              <p className="text-xs text-muted-foreground/80 mt-1">Try a different search term or add a new customer.</p>
+              <p className="text-sm font-semibold text-foreground">No matching customers found</p>
+              <p className="text-xs text-muted-foreground/80 mt-1 max-w-xs mx-auto">
+                No customer matched &ldquo;{query}&rdquo;. You can register them as a new customer above.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => { setIsNew(true); setNewCust(prev => ({ ...prev, shop_name: query })); }} className="mt-3 text-xs gap-1">
+                <Plus className="w-3.5 h-3.5" /> Create &ldquo;{query}&rdquo;
+              </Button>
             </div>
-          )}
-          {customers.map(c => {
-            const isSelected = selectedCustId === c.id
-            const orderCount = c._count?.orders ?? c.totalOrders ?? 0
-            return (
-              <div 
-                key={c.id} 
-                className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                  isSelected 
-                    ? 'bg-primary/5 border-primary shadow-xs ring-1 ring-primary' 
-                    : 'bg-card border-border/70 hover:border-border hover:bg-muted/20'
-                }`}
-                onClick={() => selectCustomer(c)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-bold text-base text-foreground flex items-center gap-2">
-                      {c.shop_name}
-                      {orderCount > 5 && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                          VIP
+          ) : (
+            filteredCustomers.map(c => {
+              const isSelected = selectedCustId === c.id
+              const orderCount = c._count?.orders ?? c.totalOrders ?? 0
+              return (
+                <div 
+                  key={c.id} 
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer select-none ${
+                    isSelected 
+                      ? 'bg-primary/5 border-primary shadow-xs ring-1 ring-primary' 
+                      : 'bg-card border-border/70 hover:border-border hover:bg-muted/20'
+                  }`}
+                  onClick={() => selectCustomer(c)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-base text-foreground flex items-center gap-2 truncate">
+                        <span className="truncate">{c.shop_name}</span>
+                        {isSelected && (
+                          <UserCheck className="w-4 h-4 text-primary shrink-0" />
+                        )}
+                        {orderCount > 5 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                            VIP
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-3 mt-1">
+                        <span className="flex items-center gap-1 font-medium text-foreground/80 shrink-0">
+                          <MapPin className="w-3 h-3 text-muted-foreground" /> {c.city}
                         </span>
-                      )}
+                        {c.phone && (
+                          <span className="flex items-center gap-1 shrink-0">
+                            <Phone className="w-3 h-3 text-muted-foreground" /> {c.phone}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-3 mt-1">
-                      <span className="flex items-center gap-1 font-medium text-foreground/80">
-                        <MapPin className="w-3 h-3 text-muted-foreground" /> {c.city}
+                    <div className="text-right shrink-0">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-muted text-muted-foreground border border-border/50">
+                        {orderCount} {orderCount === 1 ? 'order' : 'orders'}
                       </span>
-                      {c.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3 h-3 text-muted-foreground" /> {c.phone}
-                        </span>
-                      )}
                     </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-muted text-muted-foreground border border-border/50">
-                      {orderCount} {orderCount === 1 ? 'order' : 'orders'}
-                    </span>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
       </div>
 
@@ -239,7 +388,9 @@ export function Step1Customer({ onNext }: { onNext: (customer: SelectedCustomer,
               </div>
               
               {isLoadingHistory ? (
-                <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+                <div className="flex justify-center py-10">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
               ) : history.length > 0 ? (
                 <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
                   {history.map(order => {

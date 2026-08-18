@@ -6,11 +6,13 @@ import { serializePrisma } from "@/lib/prisma-serializer"
 export const dynamic = "force-dynamic"
 
 export default async function OrdersPage() {
-  const initialOrdersData = await getAllOrders({ page: 1, limit: 10 })
-  const stats = await getOrderStats()
-  const cities = await getUniqueCities()
+  const [initialOrdersData, stats, cities, rawCatalog] = await Promise.all([
+    getAllOrders({ page: 1, limit: 10 }),
+    getOrderStats(),
+    getUniqueCities(),
+    getFullCatalog()
+  ])
   
-  const rawCatalog = await getFullCatalog()
   const catalog = serializePrisma(rawCatalog)
   
   return (

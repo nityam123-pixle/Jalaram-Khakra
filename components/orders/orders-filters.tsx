@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { X, Search } from "lucide-react"
+import { X, Search, Calendar, Filter, Sparkles } from "lucide-react"
 
 interface OrdersFiltersProps {
   searchTerm: string
@@ -12,13 +12,16 @@ interface OrdersFiltersProps {
   setStatusFilter: (s: string) => void
   cityFilter: string
   setCityFilter: (s: string) => void
-  dateFilter: string
-  setDateFilter: (s: string) => void
+  fromDate: string
+  setFromDate: (s: string) => void
+  toDate: string
+  setToDate: (s: string) => void
   productFilter: string
   setProductFilter: (s: string) => void
   cities: string[]
   products: { id: string; name: string }[]
   onClearFilters: () => void
+  totalCount?: number
 }
 
 export function OrdersFilters({
@@ -28,72 +31,106 @@ export function OrdersFilters({
   setStatusFilter,
   cityFilter,
   setCityFilter,
-  dateFilter,
-  setDateFilter,
+  fromDate,
+  setFromDate,
+  toDate,
+  setToDate,
   productFilter,
   setProductFilter,
   cities,
   products,
-  onClearFilters
+  onClearFilters,
+  totalCount
 }: OrdersFiltersProps) {
   const hasActiveFilters =
-    searchTerm ||
+    Boolean(searchTerm) ||
     statusFilter !== "all" ||
     cityFilter !== "all" ||
-    dateFilter ||
+    Boolean(fromDate) ||
+    Boolean(toDate) ||
     productFilter !== "all"
 
   return (
-    <div className="flex flex-col gap-3 p-4 bg-card rounded-xl border border-border shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        {/* Search */}
+    <div className="flex flex-col gap-3.5 p-4 bg-card rounded-2xl border border-border/80 shadow-xs">
+      {/* Top Search Bar & Quick Indicators */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        {/* Global Multi-Token / Order ID Search */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
-            placeholder="Search orders by customer, city, or order ID..."
-            className="pl-9 bg-background/50 border-input text-sm h-9 rounded-lg focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="Search by customer, city, item, or Order ID (#32d92dd0)..."
+            className="pl-10 pr-9 bg-background/60 border-border/70 text-sm h-10 rounded-xl focus-visible:ring-1"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              type="button"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
-        {/* Filter Selects Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:flex lg:items-center">
-          {/* Status Select */}
+        {/* Clear Filters Button if any active */}
+        {hasActiveFilters && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClearFilters}
+            className="gap-1.5 h-10 px-3 text-xs font-semibold border-destructive/30 text-destructive hover:bg-destructive/10 rounded-xl shrink-0"
+          >
+            <X className="h-3.5 w-3.5" />
+            <span>Reset Filters</span>
+          </Button>
+        )}
+      </div>
+
+      {/* Filter Selects & Date Duration Controls */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 items-center">
+        {/* Status Select */}
+        <div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="bg-background/50 border-input text-sm h-9 w-full lg:w-[130px] rounded-lg">
-              <SelectValue placeholder="Status" />
+            <SelectTrigger className="bg-background/60 border-border/70 text-xs h-9.5 w-full rounded-xl">
+              <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="processing">Processing</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="pending">🟡 Pending</SelectItem>
+              <SelectItem value="processing">🔵 Processing</SelectItem>
+              <SelectItem value="completed">🟢 Completed</SelectItem>
+              <SelectItem value="delivered">🟣 Delivered</SelectItem>
+              <SelectItem value="cancelled">🔴 Cancelled</SelectItem>
             </SelectContent>
           </Select>
+        </div>
 
-          {/* City Select */}
+        {/* City Select */}
+        <div>
           <Select value={cityFilter} onValueChange={setCityFilter}>
-            <SelectTrigger className="bg-background/50 border-input text-sm h-9 w-full lg:w-[140px] truncate rounded-lg">
-              <SelectValue placeholder="City" />
+            <SelectTrigger className="bg-background/60 border-border/70 text-xs h-9.5 w-full truncate rounded-xl">
+              <SelectValue placeholder="All Cities" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Cities</SelectItem>
               {cities.map((city) => (
-                <SelectItem key={city} value={city} className="capitalize">
+                <SelectItem key={city} value={city} className="capitalize text-xs">
                   {city}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+        </div>
 
-          {/* Product Select */}
+        {/* Product Select */}
+        <div>
           <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger className="bg-background/50 border-input text-sm h-9 w-full lg:w-[160px] truncate rounded-lg">
-              <SelectValue placeholder="Product" />
+            <SelectTrigger className="bg-background/60 border-border/70 text-xs h-9.5 w-full truncate rounded-xl">
+              <SelectValue placeholder="All Products" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[300px]">
               <SelectItem value="all">All Products</SelectItem>
               {products.map((p) => (
                 <SelectItem key={p.id} value={p.id} className="text-xs">
@@ -102,30 +139,51 @@ export function OrdersFilters({
               ))}
             </SelectContent>
           </Select>
+        </div>
 
-          {/* Date Picker Input */}
-          <div className="relative w-full lg:w-[150px]">
-            <Input
+        {/* From Date Filter */}
+        <div className="relative">
+          <div className="flex items-center gap-1.5 h-9.5 px-2.5 rounded-xl border border-border/70 bg-background/60">
+            <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">From:</span>
+            <input
               type="date"
-              className="bg-background/50 border-input text-sm h-9 pr-2 w-full rounded-lg"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              className="bg-transparent text-xs text-foreground focus:outline-none w-full cursor-pointer"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
             />
+            {fromDate && (
+              <button
+                type="button"
+                onClick={() => setFromDate("")}
+                className="text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Clear Button */}
-        {hasActiveFilters && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClearFilters}
-            className="gap-2 h-9 text-muted-foreground hover:text-foreground hover:bg-muted font-normal self-end lg:self-center rounded-lg"
-          >
-            <X className="h-4 w-4" />
-            <span>Clear Filters</span>
-          </Button>
-        )}
+        {/* To Date Filter */}
+        <div className="relative">
+          <div className="flex items-center gap-1.5 h-9.5 px-2.5 rounded-xl border border-border/70 bg-background/60">
+            <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">To:</span>
+            <input
+              type="date"
+              className="bg-transparent text-xs text-foreground focus:outline-none w-full cursor-pointer"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+            {toDate && (
+              <button
+                type="button"
+                onClick={() => setToDate("")}
+                className="text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -3,32 +3,42 @@
 import { prisma } from "../../lib/prisma"
 import { serializePrisma } from "../../lib/prisma-serializer"
 
+export async function getAllCustomersForSelect() {
+  const customers = await prisma.customer.findMany({
+    where: { isArchived: false },
+    orderBy: [
+      { lastOrderAt: 'desc' },
+      { shop_name: 'asc' }
+    ],
+    include: {
+      _count: {
+        select: { orders: true }
+      }
+    }
+  })
+  return serializePrisma(customers)
+}
+
 export async function searchCustomers(query: string) {
   const q = query.trim()
   if (!q) {
-    const customers = await prisma.customer.findMany({
-      where: { isArchived: false },
-      orderBy: { lastOrderAt: 'desc' },
-      include: {
-        _count: {
-          select: { orders: true }
-        }
-      },
-      take: 20
-    })
-    return serializePrisma(customers)
+    return getAllCustomersForSelect()
   }
 
-  // Very basic search, assuming PostgreSQL ilike or Prisma contains
+  const tokens = q.split(/\s+/).filter(Boolean)
+  const whereConditions = tokens.map(t => ({
+    OR: [
+      { shop_name: { contains: t, mode: 'insensitive' as const } },
+      { city: { contains: t, mode: 'insensitive' as const } },
+      { phone: { contains: t, mode: 'insensitive' as const } },
+      { address: { contains: t, mode: 'insensitive' as const } }
+    ]
+  }))
+
   const customers = await prisma.customer.findMany({
     where: {
       isArchived: false,
-      OR: [
-        { shop_name: { contains: q, mode: 'insensitive' } },
-        { city: { contains: q, mode: 'insensitive' } },
-        { phone: { contains: q, mode: 'insensitive' } },
-        { address: { contains: q, mode: 'insensitive' } }
-      ]
+      AND: whereConditions
     },
     orderBy: { lastOrderAt: 'desc' },
     include: {
@@ -36,7 +46,7 @@ export async function searchCustomers(query: string) {
         select: { orders: true }
       }
     },
-    take: 20
+    take: 100
   })
   return serializePrisma(customers)
 }
