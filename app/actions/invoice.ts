@@ -169,59 +169,71 @@ export async function generateInvoiceForOrder(orderId: string) {
   if (!order) throw new Error("Order not found");
   if (order.invoice) return serializePrisma(order.invoice);
 
-  // Generate a new invoice sequence
-  const currentYear = new Date().getFullYear();
-  const sequence = await prisma.invoiceSequence.upsert({
-    where: { year: currentYear },
-    update: { currentValue: { increment: 1 } },
-    create: { year: currentYear, currentValue: 1 }
-  });
-
-  const invoiceNumber = `INV-${currentYear}-${String(sequence.currentValue).padStart(5, '0')}`;
-  const subtotal = order.total_amount || 0;
-  
-  // Format items for PDF
-  const items = order.items.map(item => ({
-    name: `${item.productName} - ${item.variantName}`,
-    quantity: item.quantity,
-    rate: item.unitSellingPrice,
-    amount: item.totalRevenue
-  }));
-
-  const invoiceData = {
-    invoiceNumber,
-    invoiceDate: new Date().toLocaleDateString('en-IN'),
-    customerName: order.customer.shop_name,
-    customerAddress: order.customer.address || '',
-    customerCity: order.customer.city,
-    customerPhone: order.customer.phone || undefined,
-    items,
-    subtotal: Number(subtotal),
-    tax: 0,
-    total: Number(subtotal),
-  };
-
-  // We don't generate the PDF file on disk anymore
-  // Instead, the PDF is generated dynamically via the API route
-  // The API route needs the invoice ID, but we don't have it yet, so we will update it after creation
-  const pdfUrl = '';
+  const subtotal = Number(order.total_amount || 0);
 
   const paymentStatus = 
-    (order.status.toLowerCase() === 'completed' || order.status.toLowerCase() === 'delivered') 
+    (order.status?.toLowerCase() === 'completed' || order.status?.toLowerCase() === 'delivered') 
       ? 'PAID' 
       : 'PENDING';
 
-  const newInvoice = await prisma.invoice.create({
-    data: {
-      invoiceNumber,
-      orderId: order.id,
-      customerId: order.customer.id,
-      subtotal: Number(subtotal),
-      tax: 0,
-      total: Number(subtotal),
-      paymentStatus,
-      pdfUrl: '' // Will update immediately
+  const newInvoice = await prisma.$transaction(async (tx) => {
+    const currentYear = new Date().getFullYear();
+
+    // 1. Ensure sequence row exists for the current year
+    await tx.$executeRaw`
+      INSERT INTO "invoice_sequences" (year, "currentValue", "updatedAt")
+      VALUES (${currentYear}, 0, NOW())
+      ON CONFLICT (year) DO NOTHING;
+    `;
+
+    // 2. Lock the sequence row with FOR UPDATE
+    const lockedRows = await tx.$queryRaw<{ year: number; currentValue: number }[]>`
+      SELECT year, "currentValue"
+      FROM "invoice_sequences"
+      WHERE year = ${currentYear}
+      FOR UPDATE;
+    `;
+
+    const currentLockedVal = Number(lockedRows[0]?.currentValue || 0);
+
+    // 3. Self-healing check inside the locked transaction
+    const latestInvoice = await tx.invoice.findFirst({
+      where: { invoiceNumber: { startsWith: `INV-${currentYear}-` } },
+      orderBy: { invoiceNumber: 'desc' },
+      select: { invoiceNumber: true }
+    });
+
+    let highestExistingNum = 0;
+    if (latestInvoice?.invoiceNumber) {
+      const lastNum = parseInt(latestInvoice.invoiceNumber.split('-')[2], 10);
+      if (!isNaN(lastNum)) highestExistingNum = lastNum;
     }
+
+    const nextSeqValue = Math.max(currentLockedVal, highestExistingNum) + 1;
+    const invoiceNumber = `INV-${currentYear}-${String(nextSeqValue).padStart(5, '0')}`;
+
+    // 4. Update the locked sequence row to the new value
+    await tx.$executeRaw`
+      UPDATE "invoice_sequences"
+      SET "currentValue" = ${nextSeqValue}, "updatedAt" = NOW()
+      WHERE year = ${currentYear};
+    `;
+
+    // 5. Create invoice
+    const inv = await tx.invoice.create({
+      data: {
+        invoiceNumber,
+        orderId: order.id,
+        customerId: order.customerId || order.customer?.id,
+        subtotal: Number(subtotal),
+        tax: 0,
+        total: Number(subtotal),
+        paymentStatus,
+        pdfUrl: ''
+      }
+    });
+
+    return inv;
   });
 
   const finalPdfUrl = `/api/pdf/invoice/${newInvoice.id}`;
@@ -263,7 +275,7 @@ export async function generateMonthlyStatement(customerId: string, month: number
 
   const ordersList = customer.orders.map(o => ({
     orderNumber: o.id.slice(0, 8),
-    orderDate: new Date(o.created_at).toLocaleDateString('en-IN'),
+    orderDate: o.created_at ? new Date(o.created_at).toLocaleDateString('en-IN') : 'N/A',
     total: Number(o.total_amount || 0)
   }));
 

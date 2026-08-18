@@ -3,7 +3,6 @@
 import { prisma } from "../../lib/prisma"
 import { revalidatePath } from "next/cache"
 import { serializePrisma } from "../../lib/prisma-serializer"
-import { generateInvoicePdf } from "../../lib/pdf-generator"
 
 function revalidateAllPaths(orderId?: string) {
   revalidatePath("/")
@@ -21,6 +20,12 @@ function revalidateAllPaths(orderId?: string) {
   revalidatePath("/inventory/settings")
 }
 
+export type PriceOverrideApproval = {
+  approved: boolean
+  approvedBy?: string
+  reason?: string
+}
+
 export type OrderItemInput = {
   variantId: string
   quantity: number
@@ -31,6 +36,7 @@ export type CreateOrderInput = {
   customerId: string
   dueDate?: Date
   items: OrderItemInput[]
+  priceOverrideApproval?: PriceOverrideApproval
 }
 
 export async function createOrder(data: CreateOrderInput) {
@@ -41,8 +47,8 @@ export async function createOrder(data: CreateOrderInput) {
     throw new Error("Missing customerId or items")
   }
 
-  // First, fetch the pricing and product info for all submitted variants
-  const variantIds = data.items.map((i) => i.variantId)
+  // Fetch the pricing and product info for all submitted variants
+  const variantIds = data.items.map((i) => i.variantId).filter(Boolean)
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: variantIds } },
     include: {
@@ -62,54 +68,80 @@ export async function createOrder(data: CreateOrderInput) {
   let totalAmount = 0
   let totalKhakhraKg = 0 // Legacy compatibility, approximate
 
+  const overriddenItems: {
+    productName: string
+    variantName: string
+    sellingPrice: number
+    minSellingPrice: number | null
+    maxSellingPrice: number | null
+    reason: string
+  }[] = []
+
   const orderItemsData = data.items.map((itemInput) => {
     const variant = variantMap.get(itemInput.variantId)
-    if (!variant) throw new Error(`Variant ${itemInput.variantId} not found`)
+    const productName = variant?.product?.name || "Unknown Product"
+    const categoryName = variant?.product?.category?.name || "General"
+    const variantName = variant?.name || "Default"
+    const unitType = variant?.unitType || "KG"
 
-    const pricing = variant.pricingRules[0]
+    const pricing = variant?.pricingRules?.[0]
+    const sellingPrice = Number(itemInput.sellingPrice || 0)
     let costPrice = 0
-    const sellingPrice = itemInput.sellingPrice
 
-    const isAdjustment = variant.product.name.toLowerCase().includes('outstanding balance') || 
-                         variant.product.category.name.toLowerCase().includes('adjustment')
-
-    if (!pricing && !isAdjustment) {
-      console.warn(`[createOrder] WARNING: No pricing configured for ${variant.product.name} ${variant.name}. Using costPrice = 0.`)
-    }
+    const isAdjustment = productName.toLowerCase().includes('outstanding balance') || 
+                         categoryName.toLowerCase().includes('adjustment')
 
     if (pricing) {
-      costPrice = Number(pricing.costPrice)
-      // Basic validation
-      if (pricing.minSellingPrice && sellingPrice < Number(pricing.minSellingPrice)) {
-        throw new Error(`Selling price ${sellingPrice} is below minimum ${pricing.minSellingPrice}`)
-      }
-      if (pricing.maxSellingPrice && sellingPrice > Number(pricing.maxSellingPrice)) {
-        throw new Error(`Selling price ${sellingPrice} is above maximum ${pricing.maxSellingPrice}`)
+      costPrice = Number(pricing.costPrice || 0)
+      const minSell = pricing.minSellingPrice != null ? Number(pricing.minSellingPrice) : null
+      const maxSell = pricing.maxSellingPrice != null ? Number(pricing.maxSellingPrice) : null
+
+      if (minSell != null && sellingPrice < minSell) {
+        overriddenItems.push({
+          productName,
+          variantName,
+          sellingPrice,
+          minSellingPrice: minSell,
+          maxSellingPrice: maxSell,
+          reason: `Selling price ₹${sellingPrice} is below configured minimum ₹${minSell}`
+        })
+      } else if (maxSell != null && sellingPrice > maxSell) {
+        overriddenItems.push({
+          productName,
+          variantName,
+          sellingPrice,
+          minSellingPrice: minSell,
+          maxSellingPrice: maxSell,
+          reason: `Selling price ₹${sellingPrice} is above configured maximum ₹${maxSell}`
+        })
       }
     } else {
-      // For adjustments, costPrice = sellingPrice (0 profit). For missing pricing, costPrice = 0 (100% profit).
       costPrice = isAdjustment ? sellingPrice : 0
+      if (!isAdjustment) {
+        console.warn(`[createOrder] WARNING: No pricing configured for ${productName} ${variantName}. Defaulting costPrice to 0.`)
+      }
     }
 
-    const totalRevenue = sellingPrice * itemInput.quantity
-    const totalCost = costPrice * itemInput.quantity
+    const qty = Number(itemInput.quantity || 0)
+    const totalRevenue = sellingPrice * qty
+    const totalCost = costPrice * qty
     const totalProfit = totalRevenue - totalCost
 
     totalAmount += totalRevenue
     
     // Legacy calculation for total_khakhra_kg if the category is Khakhra
-    if (variant.unitType === 'KG' && variant.product.category.name.toLowerCase().includes('khakhra')) {
-      totalKhakhraKg += itemInput.quantity
-    } else if (variant.unitType === 'PACKET' && variant.product.category.name.toLowerCase().includes('khakhra')) {
-      totalKhakhraKg += itemInput.quantity * 0.2 // rough estimate 200g per packet
+    if (unitType === 'KG' && categoryName.toLowerCase().includes('khakhra')) {
+      totalKhakhraKg += qty
+    } else if (unitType === 'PACKET' && categoryName.toLowerCase().includes('khakhra')) {
+      totalKhakhraKg += qty * 0.2 // rough estimate 200g per packet
     }
 
     return {
-      variantId: variant.id,
-      quantity: itemInput.quantity,
-      productName: variant.product.name,
-      categoryName: variant.product.category.name,
-      variantName: variant.name,
+      variantId: variant?.id || itemInput.variantId,
+      quantity: qty,
+      productName,
+      categoryName,
+      variantName,
       unitCostPrice: costPrice,
       unitSellingPrice: sellingPrice,
       totalCost,
@@ -118,13 +150,27 @@ export async function createOrder(data: CreateOrderInput) {
     }
   })
 
+  // Enforce pricing rule validation unless explicit override was confirmed
+  if (overriddenItems.length > 0 && !data.priceOverrideApproval?.approved) {
+    const errorDetails = overriddenItems.map(o => `${o.productName} (${o.variantName}): entered ₹${o.sellingPrice} (range ₹${o.minSellingPrice ?? '-'} – ₹${o.maxSellingPrice ?? '-'})`).join("; ")
+    throw new Error(`Price override approval required: ${errorDetails}`)
+  }
+
+  const approver = data.priceOverrideApproval?.approvedBy || "Admin / Owner"
+  const overrideReason = data.priceOverrideApproval?.reason || "Special negotiated price"
+  const hasOverrides = overriddenItems.length > 0 && data.priceOverrideApproval?.approved
+
+  if (hasOverrides) {
+    console.log(`[PRICE_OVERRIDE_APPROVED] Approved by: ${approver} at ${new Date().toISOString()}. Reason: ${overrideReason}. Overridden items:`, overriddenItems)
+  }
+
   console.log("[createOrder] Calculated Totals:", { totalAmount, totalKhakhraKg, itemCount: orderItemsData.length })
 
   if (totalAmount <= 0 || orderItemsData.length === 0) {
     throw new Error("At least one valid item with a positive revenue is required to create an order.")
   }
 
-  // Start transaction
+  // Start transaction with row-level locked invoice sequence
   const result = await prisma.$transaction(async (tx) => {
     // Get customer to copy snapshot fields
     const customer = await tx.customer.findUnique({
@@ -133,7 +179,7 @@ export async function createOrder(data: CreateOrderInput) {
     
     if (!customer) throw new Error("Customer not found")
 
-    // Update customer lastOrderAt and totalOrders
+    // Update customer lastOrderAt and totalOrders safely
     await tx.customer.update({
       where: { id: customer.id },
       data: {
@@ -144,21 +190,52 @@ export async function createOrder(data: CreateOrderInput) {
 
     const currentYear = new Date().getFullYear()
 
-    // Atomically increment the sequence
-    const sequence = await tx.invoiceSequence.upsert({
-      where: { year: currentYear },
-      update: { currentValue: { increment: 1 } },
-      create: { year: currentYear, currentValue: 1 }
+    // 1. Ensure the sequence row exists for the current year
+    await tx.$executeRaw`
+      INSERT INTO "invoice_sequences" (year, "currentValue", "updatedAt")
+      VALUES (${currentYear}, 0, NOW())
+      ON CONFLICT (year) DO NOTHING;
+    `
+
+    // 2. Lock the sequence row with FOR UPDATE to prevent any simultaneous sequence race condition
+    const lockedRows = await tx.$queryRaw<{ year: number; currentValue: number }[]>`
+      SELECT year, "currentValue"
+      FROM "invoice_sequences"
+      WHERE year = ${currentYear}
+      FOR UPDATE;
+    `
+
+    const currentLockedVal = Number(lockedRows[0]?.currentValue || 0)
+
+    // 3. Self-healing check: query highest existing invoice number for this year
+    const latestInvoice = await tx.invoice.findFirst({
+      where: { invoiceNumber: { startsWith: `INV-${currentYear}-` } },
+      orderBy: { invoiceNumber: 'desc' },
+      select: { invoiceNumber: true }
     })
 
-    const invoiceNumber = `INV-${currentYear}-${sequence.currentValue.toString().padStart(5, '0')}`
+    let highestExistingNum = 0
+    if (latestInvoice?.invoiceNumber) {
+      const lastNum = parseInt(latestInvoice.invoiceNumber.split('-')[2], 10)
+      if (!isNaN(lastNum)) highestExistingNum = lastNum
+    }
+
+    const nextSeqValue = Math.max(currentLockedVal, highestExistingNum) + 1
+    const invoiceNumber = `INV-${currentYear}-${String(nextSeqValue).padStart(5, '0')}`
+
+    // 4. Update the locked sequence row to the new value
+    await tx.$executeRaw`
+      UPDATE "invoice_sequences"
+      SET "currentValue" = ${nextSeqValue}, "updatedAt" = NOW()
+      WHERE year = ${currentYear};
+    `
 
     // Create the Order
     const order = await tx.order.create({
       data: {
         customerId: customer.id,
-        shop_name: customer.shop_name,
-        city: customer.city,
+        shop_name: customer.shop_name || "Unknown Shop",
+        city: customer.city || "",
         address: customer.address || "",
         due_date: data.dueDate,
         total_amount: totalAmount,
@@ -174,7 +251,7 @@ export async function createOrder(data: CreateOrderInput) {
       }
     })
 
-    // Create Invoice
+    // Create Invoice inside the same database transaction
     const invoice = await tx.invoice.create({
       data: {
         invoiceNumber,
@@ -189,33 +266,41 @@ export async function createOrder(data: CreateOrderInput) {
       }
     })
 
-    // Update inventory for tracked variants
+    // Build audit note prefix
+    const auditNote = hasOverrides 
+      ? `[PRICE OVERRIDE APPROVED by ${approver} on ${new Date().toLocaleDateString('en-IN')}: ${overrideReason}] ` 
+      : ""
+
+    // Update inventory and stock ledger for tracked variants
     for (const item of orderItemsData) {
-      const inventory = await tx.inventoryLevel.findUnique({
-        where: { variantId: item.variantId }
-      })
-
-      if (inventory) {
-        const updatedInventory = await tx.inventoryLevel.update({
-          where: { variantId: item.variantId },
-          data: { availableStock: { decrement: item.quantity } }
+      if (item.variantId) {
+        const inventory = await tx.inventoryLevel.findUnique({
+          where: { variantId: item.variantId }
         })
 
-        await tx.stockLedger.create({
-          data: {
-            variantId: item.variantId,
-            action: "SOLD_THROUGH_ORDER",
-            quantity: -item.quantity,
-            previousStock: inventory.availableStock,
-            newStock: updatedInventory.availableStock,
-            reference: order.id,
-            notes: `Order #${order.id.slice(0,8)} created for ${customer.shop_name}`
-          }
-        })
+        if (inventory) {
+          const prevStock = Number(inventory.availableStock || 0)
+          const updatedInventory = await tx.inventoryLevel.update({
+            where: { variantId: item.variantId },
+            data: { availableStock: { decrement: item.quantity } }
+          })
+
+          await tx.stockLedger.create({
+            data: {
+              variantId: item.variantId,
+              action: "SOLD_THROUGH_ORDER",
+              quantity: -item.quantity,
+              previousStock: prevStock,
+              newStock: Number(updatedInventory.availableStock || 0),
+              reference: order.id,
+              notes: `${auditNote}Order #${order.id.slice(0,8)} created for ${customer.shop_name || "customer"}`
+            }
+          })
+        }
       }
     }
 
-    console.log("[createOrder] Order created successfully:", order.id)
+    console.log("[createOrder] Order created successfully:", order.id, "Invoice:", invoiceNumber)
     return { order, invoice, customer, invoiceNumber }
   })
 
@@ -443,6 +528,7 @@ export async function getOrderStats() {
     pendingOrders,
     completedOrders,
     revenueResult,
+    itemRevResult,
     customersCount,
     citiesQuery,
     cityGroup,
@@ -454,6 +540,7 @@ export async function getOrderStats() {
     prisma.order.count({ where: { status: { equals: "pending", mode: "insensitive" } } }),
     prisma.order.count({ where: { status: { in: ["completed", "delivered"], mode: "insensitive" } } }),
     prisma.order.aggregate({ _sum: { total_amount: true } }),
+    prisma.orderItem.aggregate({ _sum: { totalRevenue: true } }),
     prisma.customer.count(),
     prisma.order.findMany({ select: { city: true }, distinct: ['city'] }),
     prisma.order.groupBy({
@@ -475,7 +562,10 @@ export async function getOrderStats() {
     })
   ]);
 
-  const totalRevenue = Number(revenueResult._sum.total_amount || 0);
+  const totalRevenue = Math.max(
+    Number(revenueResult._sum.total_amount || 0),
+    Number(itemRevResult._sum.totalRevenue || 0)
+  );
 
   const topProduct = topProductGroup[0]
     ? `${topProductGroup[0].productName} (${topProductGroup[0].variantName})`
@@ -530,7 +620,7 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
   }
 
   // Fetch variant details for calculation
-  const variantIds = items.map(i => i.variantId)
+  const variantIds = items.map(i => i.variantId).filter(Boolean)
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: variantIds } },
     include: {
@@ -552,52 +642,54 @@ export async function updateOrderItems(orderId: string, items: EditOrderItemInpu
 
   const orderItemsData = items.map((itemInput) => {
     const variant = variantMap.get(itemInput.variantId)
-    if (!variant) throw new Error(`Variant ${itemInput.variantId} not found`)
+    const productName = variant?.product?.name || "Unknown Product"
+    const categoryName = variant?.product?.category?.name || "General"
+    const variantName = variant?.name || "Default"
+    const unitType = variant?.unitType || "KG"
 
-    const isAdjustment = variant.product.name.toLowerCase().includes('outstanding balance') || 
-                         variant.product.category.name.toLowerCase().includes('adjustment')
+    const isAdjustment = productName.toLowerCase().includes('outstanding balance') || 
+                         categoryName.toLowerCase().includes('adjustment')
 
-    const pricing = variant.pricingRules[0]
-    if (!pricing && !isAdjustment) {
-      console.warn(`[updateOrderItems] WARNING: No pricing configured for ${variant.product.name} ${variant.name}. Using costPrice = 0.`)
-    }
-
+    const pricing = variant?.pricingRules?.[0]
+    const sellingPrice = Number(itemInput.sellingPrice || 0)
     let costPrice = 0
-    const sellingPrice = itemInput.sellingPrice
 
     if (pricing) {
-      costPrice = Number(pricing.costPrice)
-      // Basic validation
+      costPrice = Number(pricing.costPrice || 0)
       if (pricing.minSellingPrice && sellingPrice < Number(pricing.minSellingPrice)) {
-        throw new Error(`Selling price ${sellingPrice} is below minimum ${pricing.minSellingPrice}`)
+        console.warn(`[updateOrderItems] Selling price ${sellingPrice} is below minimum ${pricing.minSellingPrice} for ${productName} (${variantName}). Proceeding.`)
       }
       if (pricing.maxSellingPrice && sellingPrice > Number(pricing.maxSellingPrice)) {
-        throw new Error(`Selling price ${sellingPrice} is above maximum ${pricing.maxSellingPrice}`)
+        console.warn(`[updateOrderItems] Selling price ${sellingPrice} is above maximum ${pricing.maxSellingPrice} for ${productName} (${variantName}). Proceeding.`)
       }
     } else {
       costPrice = isAdjustment ? sellingPrice : 0
+      if (!isAdjustment) {
+        console.warn(`[updateOrderItems] WARNING: No pricing configured for ${productName} ${variantName}. Defaulting costPrice to 0.`)
+      }
     }
 
-    const totalRevenue = sellingPrice * itemInput.quantity
-    const totalCost = costPrice * itemInput.quantity
+    const qty = Number(itemInput.quantity || 0)
+    const totalRevenue = sellingPrice * qty
+    const totalCost = costPrice * qty
     const totalProfit = totalRevenue - totalCost
 
     totalAmount += totalRevenue
 
     // Legacy calculation for total_khakhra_kg if the category is Khakhra
-    if (variant.unitType === 'KG' && variant.product.category.name.toLowerCase().includes('khakhra')) {
-      totalKhakhraKg += itemInput.quantity
-    } else if (variant.unitType === 'PACKET' && variant.product.category.name.toLowerCase().includes('khakhra')) {
-      totalKhakhraKg += itemInput.quantity * 0.2 // rough estimate 200g per packet
+    if (unitType === 'KG' && categoryName.toLowerCase().includes('khakhra')) {
+      totalKhakhraKg += qty
+    } else if (unitType === 'PACKET' && categoryName.toLowerCase().includes('khakhra')) {
+      totalKhakhraKg += qty * 0.2 // rough estimate 200g per packet
     }
 
     return {
       orderId,
-      variantId: variant.id,
-      quantity: itemInput.quantity,
-      productName: variant.product.name,
-      categoryName: variant.product.category.name,
-      variantName: variant.name,
+      variantId: variant?.id || itemInput.variantId,
+      quantity: qty,
+      productName,
+      categoryName,
+      variantName,
       unitCostPrice: costPrice,
       unitSellingPrice: sellingPrice,
       totalCost,

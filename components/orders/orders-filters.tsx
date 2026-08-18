@@ -44,14 +44,14 @@ export function OrdersFilters({
     productFilter !== "all"
 
   return (
-    <div className="flex flex-col gap-3 p-4 bg-card rounded-xl border border-border/80 shadow-sm">
+    <div className="flex flex-col gap-3 p-4 bg-card rounded-xl border border-border shadow-sm">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         {/* Search */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search orders by customer or ID..."
-            className="pl-9 bg-background border-border text-sm h-9"
+            placeholder="Search orders by customer, city, or order ID..."
+            className="pl-9 bg-background/50 border-input text-sm h-9 rounded-lg focus-visible:ring-1 focus-visible:ring-ring"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -61,7 +61,7 @@ export function OrdersFilters({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:flex lg:items-center">
           {/* Status Select */}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="bg-background border-border text-sm h-9 w-full lg:w-[130px]">
+            <SelectTrigger className="bg-background/50 border-input text-sm h-9 w-full lg:w-[130px] rounded-lg">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -75,7 +75,7 @@ export function OrdersFilters({
 
           {/* City Select */}
           <Select value={cityFilter} onValueChange={setCityFilter}>
-            <SelectTrigger className="bg-background border-border text-sm h-9 w-full lg:w-[140px] truncate">
+            <SelectTrigger className="bg-background/50 border-input text-sm h-9 w-full lg:w-[140px] truncate rounded-lg">
               <SelectValue placeholder="City" />
             </SelectTrigger>
             <SelectContent>
@@ -90,7 +90,7 @@ export function OrdersFilters({
 
           {/* Product Select */}
           <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger className="bg-background border-border text-sm h-9 w-full lg:w-[160px] truncate">
+            <SelectTrigger className="bg-background/50 border-input text-sm h-9 w-full lg:w-[160px] truncate rounded-lg">
               <SelectValue placeholder="Product" />
             </SelectTrigger>
             <SelectContent>
@@ -107,7 +107,7 @@ export function OrdersFilters({
           <div className="relative w-full lg:w-[150px]">
             <Input
               type="date"
-              className="bg-background border-border text-sm h-9 pr-2 w-full scheme-dark"
+              className="bg-background/50 border-input text-sm h-9 pr-2 w-full rounded-lg"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
             />
@@ -120,7 +120,7 @@ export function OrdersFilters({
             variant="ghost"
             size="sm"
             onClick={onClearFilters}
-            className="gap-2 h-9 text-muted-foreground hover:text-foreground hover:bg-muted font-normal self-end lg:self-center"
+            className="gap-2 h-9 text-muted-foreground hover:text-foreground hover:bg-muted font-normal self-end lg:self-center rounded-lg"
           >
             <X className="h-4 w-4" />
             <span>Clear Filters</span>

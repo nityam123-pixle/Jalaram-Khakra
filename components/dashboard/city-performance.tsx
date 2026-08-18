@@ -4,13 +4,13 @@ import { useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Landmark, ArrowUpRight, ArrowDownRight, IndianRupee } from "lucide-react"
+import { getOrderTotals } from "@/lib/order-utils"
+import { getCategoryColor } from "./product-performance"
 
 interface CityPerformanceProps {
   currentOrders: any[]
   priorOrders: any[]
 }
-
-import { getCategoryColor } from "./product-performance"
 
 export function CityPerformance({ currentOrders, priorOrders }: CityPerformanceProps) {
   const cityStats = useMemo(() => {
@@ -23,8 +23,9 @@ export function CityPerformance({ currentOrders, priorOrders }: CityPerformanceP
     currentOrders.forEach((o) => {
       if (o.city) {
         const city = o.city.trim().toLowerCase()
-        const rev = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
-        const profit = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalProfit), 0)
+        const totals = getOrderTotals(o)
+        const rev = totals.totalRevenue
+        const profit = totals.totalProfit
 
         totalRevenue += rev
 
@@ -47,7 +48,8 @@ export function CityPerformance({ currentOrders, priorOrders }: CityPerformanceP
     priorOrders.forEach((o) => {
       if (o.city) {
         const city = o.city.trim().toLowerCase()
-        const rev = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
+        const totals = getOrderTotals(o)
+        const rev = totals.totalRevenue
         if (!priorCityStats[city]) {
           priorCityStats[city] = { revenue: 0 }
         }

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { DashboardHeader, DateFilterType } from "./dashboard-header"
+import { getOrderTotals } from "@/lib/order-utils"
 import { DashboardKPIs } from "./dashboard-kpis"
 import { BusinessHealth } from "./business-health"
 import { ExecutiveProfitCenter } from "./executive-profit-center"
@@ -163,7 +164,8 @@ export function DashboardCoordinator({
     const csvRows = [headers.join(",")]
     currentFilteredOrders.forEach((o) => {
       const items = o.items ?? []
-      const totalRevenue = items.reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
+      const totals = getOrderTotals(o)
+      const totalRevenue = totals.totalRevenue
       const row = [
         o.id.toUpperCase(),
         `"${(o.customer?.shop_name || o.shop_name || "").replace(/"/g, '""')}"`,

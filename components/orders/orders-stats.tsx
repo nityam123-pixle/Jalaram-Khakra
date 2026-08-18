@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { ShoppingCart, Clock3, CircleCheck, IndianRupee, Users, MapPin } from "lucide-react"
 
@@ -16,61 +15,50 @@ interface OrdersStatsProps {
 }
 
 export function OrdersStats({ stats }: OrdersStatsProps) {
-
   const kpis = [
     {
       title: "Total Orders",
       value: stats.totalOrders.toLocaleString(),
-      description: "All customer orders",
+      subLabel: "All Time",
+      description: "Customer orders logged",
       icon: ShoppingCart,
-      colorClass: "text-purple-600 dark:text-purple-400",
-      bgClass: "bg-purple-50 dark:bg-purple-950/30 border-purple-100 dark:border-purple-900/40",
-      iconBgClass: "bg-purple-100 dark:bg-purple-900/50"
     },
     {
       title: "Pending Orders",
       value: stats.pendingOrders.toLocaleString(),
+      subLabel: "Action Required",
       description: "Awaiting fulfillment",
       icon: Clock3,
-      colorClass: "text-amber-600 dark:text-amber-400",
-      bgClass: "bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/40",
-      iconBgClass: "bg-amber-100 dark:bg-amber-900/50"
+      badge: stats.pendingOrders > 0 ? "Active" : undefined,
+      badgeColor: "text-amber-500 bg-amber-500/10 border-amber-500/20",
     },
     {
       title: "Completed Orders",
       value: stats.completedOrders.toLocaleString(),
-      description: "Successfully delivered",
+      subLabel: "Fulfilled",
+      description: "Delivered successfully",
       icon: CircleCheck,
-      colorClass: "text-green-600 dark:text-green-400",
-      bgClass: "bg-green-50 dark:bg-green-950/30 border-green-100 dark:border-green-900/40",
-      iconBgClass: "bg-green-100 dark:bg-green-900/50"
     },
     {
-      title: "Revenue",
+      title: "Total Revenue",
       value: `₹${Math.round(stats.totalRevenue).toLocaleString("en-IN")}`,
-      description: "Total order revenue",
+      subLabel: "Gross Sales",
+      description: "Combined order value",
       icon: IndianRupee,
-      colorClass: "text-emerald-600 dark:text-emerald-400",
-      bgClass: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/40",
-      iconBgClass: "bg-emerald-100 dark:bg-emerald-900/50"
     },
     {
-      title: "Customers",
+      title: "Active Customers",
       value: stats.customersCount.toLocaleString(),
-      description: "Active buyers",
+      subLabel: "Buyers",
+      description: "Unique businesses",
       icon: Users,
-      colorClass: "text-blue-600 dark:text-blue-400",
-      bgClass: "bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/40",
-      iconBgClass: "bg-blue-100 dark:bg-blue-900/50"
     },
     {
-      title: "Cities",
+      title: "Coverage Cities",
       value: stats.citiesCount.toLocaleString(),
-      description: "Order locations",
+      subLabel: "Locations",
+      description: "Distribution network",
       icon: MapPin,
-      colorClass: "text-rose-600 dark:text-rose-400",
-      bgClass: "bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40",
-      iconBgClass: "bg-rose-100 dark:bg-rose-900/50"
     }
   ]
 
@@ -79,15 +67,37 @@ export function OrdersStats({ stats }: OrdersStatsProps) {
       {kpis.map((kpi, idx) => {
         const IconComponent = kpi.icon
         return (
-          <Card key={idx} className={`overflow-hidden border shadow-sm ${kpi.bgClass}`}>
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className={`p-3 rounded-full shrink-0 ${kpi.iconBgClass} ${kpi.colorClass}`}>
-                <IconComponent className="h-5 w-5" />
+          <Card 
+            key={idx} 
+            className="border border-border bg-card text-card-foreground shadow-sm rounded-xl overflow-hidden hover:border-ring/40 transition-colors"
+          >
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {kpi.title}
+                </p>
+                <div className="p-2 rounded-lg bg-muted/60 dark:bg-secondary/40 text-muted-foreground border border-border/40">
+                  <IconComponent className="h-4 w-4" />
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{kpi.title}</p>
-                <p className="text-2xl font-bold tracking-tight text-foreground mt-0.5">{kpi.value}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{kpi.description}</p>
+
+              <div className="my-3">
+                <p className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground font-mono">
+                  {kpi.value}
+                </p>
+              </div>
+
+              <div className="bg-muted/30 dark:bg-black/20 border border-border/40 rounded-lg px-3 py-2 flex items-center justify-between text-xs mt-auto">
+                <span className="text-muted-foreground font-medium truncate">{kpi.description}</span>
+                {kpi.badge ? (
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${kpi.badgeColor}`}>
+                    {kpi.badge}
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-mono text-muted-foreground/70 uppercase">
+                    {kpi.subLabel}
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>

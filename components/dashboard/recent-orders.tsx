@@ -5,6 +5,7 @@ import { OrderStatusBadge } from "@/components/orders/order-status-badge"
 import { OrderActionsMenu } from "@/components/orders/order-actions-menu"
 import { MapPin, Package, IndianRupee, Clock, ArrowRight } from "lucide-react"
 import Link from "next/link"
+import { getOrderTotals } from "@/lib/order-utils"
 
 interface RecentOrdersProps {
   orders: any[]
@@ -62,8 +63,9 @@ export function RecentOrders({
         <div className="divide-y divide-border/60">
           {orders.map((order) => {
             const items = order.items ?? []
-            const totalRevenue = items.reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
-            const totalProfit = items.reduce((s: number, i: any) => s + Number(i.totalProfit), 0)
+            const totals = getOrderTotals(order)
+            const totalRevenue = totals.totalRevenue
+            const totalProfit = totals.totalProfit
             const initials = (order.customer?.shop_name || order.shop_name || "?")
               .slice(0, 2)
               .toUpperCase()

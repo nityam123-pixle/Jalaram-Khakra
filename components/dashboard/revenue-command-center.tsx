@@ -1,9 +1,10 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useState, useMemo } from "react"
+import { getOrderTotals } from "@/lib/order-utils"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { IndianRupee, ShoppingCart, TrendingUp } from "lucide-react"
+import { IndianRupee, ShoppingCart } from "lucide-react"
 import {
   ResponsiveContainer,
   AreaChart,
@@ -12,7 +13,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as ChartTooltip,
-  Legend,
 } from "recharts"
 
 interface RevenueCommandCenterProps {
@@ -22,17 +22,13 @@ interface RevenueCommandCenterProps {
 type ChartTimeframe = "7d" | "30d" | "90d" | "1y"
 
 export function RevenueCommandCenter({ orders }: RevenueCommandCenterProps) {
-  const [mounted, setMounted] = useState(false)
+  const [mounted, setMounted] = useState(true)
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("30d")
 
   // Toggles for charts
   const [showRevenue, setShowRevenue] = useState(true)
   const [showProfit, setShowProfit] = useState(true)
   const [showOrders, setShowOrders] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Aggregate daily records
   const dailyTimeline = useMemo(() => {
@@ -46,12 +42,9 @@ export function RevenueCommandCenter({ orders }: RevenueCommandCenterProps) {
       const key = d.toISOString().split("T")[0]
       const displayDate = d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
 
-      let rev = 0
-      let profit = 0
-      ;(order.items ?? []).forEach((item: any) => {
-        rev += Number(item.totalRevenue) || 0
-        profit += Number(item.totalProfit) || 0
-      })
+      const totals = getOrderTotals(order)
+      const rev = totals.totalRevenue
+      const profit = totals.totalProfit
 
       if (!dailyMap[key]) {
         dailyMap[key] = { date: key, displayDate, revenue: 0, profit: 0, orders: 0 }

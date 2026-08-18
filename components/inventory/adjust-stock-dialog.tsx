@@ -43,7 +43,7 @@ export function AdjustStockDialog({ variantId, currentStock, variantName, produc
         await adjustStock(
           variantId,
           amount,
-          formData.get("notes") as string || undefined
+          String(formData.get("notes") || "")
         )
         setOpen(false)
         setAdjustment("")

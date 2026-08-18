@@ -1,49 +1,57 @@
 "use client"
 
 import { useMemo } from "react"
+import { getOrderTotals } from "@/lib/order-utils"
 import { Card, CardContent } from "@/components/ui/card"
 import {
-  IndianRupee,
   TrendingUp,
   TrendingDown,
-  ShoppingCart,
-  Users,
-  MapPin,
+  DollarSign,
   Package,
-  Activity,
+  CheckCircle2,
+  Users,
+  Percent,
+  MapPin,
+  Flame,
   ArrowUpRight,
-  TrendingUpIcon,
+  ArrowDownRight,
+  Layers,
+  Sparkles,
+  IndianRupee,
+  ShoppingCart,
+  Activity,
 } from "lucide-react"
 
 interface DashboardKPIsProps {
   currentOrders: any[]
   priorOrders: any[]
   totalCustomers: number
-  priorCustomersCount: number
+  priorCustomersCount?: number
 }
 
-// Inline SVG Sparkline helper
-function Sparkline({ data, colorClass }: { data: number[]; colorClass: string }) {
-  const points = useMemo(() => {
-    if (!data || data.length <= 1) return ""
-    const max = Math.max(...data)
-    const min = Math.min(...data)
-    const range = max - min === 0 ? 1 : max - min
-    const width = 50
-    const height = 16
-    return data
-      .map((val, idx) => {
-        const x = (idx / (data.length - 1)) * width
-        const y = height - 1 - ((val - min) / range) * (height - 2)
-        return `${x.toFixed(1)},${y.toFixed(1)}`
-      })
-      .join(" ")
-  }, [data])
+// Minimal, reliable SVG Sparkline implementation
+function Sparkline({ data, colorClass, isPositive = true }: { data: number[]; colorClass?: string; isPositive?: boolean }) {
+  if (!data || data.length < 2) {
+    return <div className="h-6 w-16" />
+  }
 
-  if (!points) return null
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min === 0 ? 1 : max - min
+  const width = 64
+  const height = 24
+  const padding = 2
+
+  const points = data
+    .map((val, idx) => {
+      const x = padding + (idx / (data.length - 1)) * (width - 2 * padding)
+      const y = height - padding - ((val - min) / range) * (height - 2 * padding)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(" ")
 
   return (
-    <svg width="50" height="16" className={`overflow-visible ${colorClass}`}>
+    <svg width={width} height={height} className={`overflow-visible ${colorClass || ""}`}>
       <polyline
         fill="none"
         stroke="currentColor"
@@ -51,6 +59,7 @@ function Sparkline({ data, colorClass }: { data: number[]; colorClass: string })
         strokeLinecap="round"
         strokeLinejoin="round"
         points={points}
+        className={colorClass ? "" : isPositive ? "text-emerald-500" : "text-rose-500"}
       />
     </svg>
   )
@@ -60,7 +69,7 @@ export function DashboardKPIs({
   currentOrders,
   priorOrders,
   totalCustomers,
-  priorCustomersCount,
+  priorCustomersCount = 0,
 }: DashboardKPIsProps) {
   const stats = useMemo(() => {
     // Current Period Metrics
@@ -72,10 +81,11 @@ export function DashboardKPIs({
 
     currentOrders.forEach((o) => {
       if (o.city) currentUniqueCities.add(o.city.trim().toLowerCase())
+      const totals = getOrderTotals(o)
+      currentRevenue += totals.totalRevenue
+      currentProfit += totals.totalProfit
       const items = o.items ?? []
       items.forEach((item: any) => {
-        currentRevenue += Number(item.totalRevenue) || 0
-        currentProfit += Number(item.totalProfit) || 0
         if (item.categoryName) currentUniqueCats.add(item.categoryName.trim())
       })
       const custId = o.customerId || o.shop_name
@@ -99,10 +109,11 @@ export function DashboardKPIs({
 
     priorOrders.forEach((o) => {
       if (o.city) priorUniqueCities.add(o.city.trim().toLowerCase())
+      const totals = getOrderTotals(o)
+      priorRevenue += totals.totalRevenue
+      priorProfit += totals.totalProfit
       const items = o.items ?? []
       items.forEach((item: any) => {
-        priorRevenue += Number(item.totalRevenue) || 0
-        priorProfit += Number(item.totalProfit) || 0
         if (item.categoryName) priorUniqueCats.add(item.categoryName.trim())
       })
       const custId = o.customerId || o.shop_name
@@ -117,13 +128,11 @@ export function DashboardKPIs({
     const priorTotalCustCount = Object.keys(priorCustomerFreq).length
     const priorRepeatRate = priorTotalCustCount > 0 ? (priorRepeatCust / priorTotalCustCount) * 100 : 0
 
-    // Helper to compute percentage trend
     const getTrend = (current: number, prior: number) => {
       if (prior === 0) return current > 0 ? 100 : 0
       return Math.round(((current - prior) / prior) * 100)
     };
 
-    // Construct sparkline data (e.g. daily breakdown, default to simple values if small)
     const getSparklineData = (ordersList: any[], field: "revenue" | "profit" | "orders") => {
       if (ordersList.length === 0) return [0, 0]
       const dailyMap: Record<string, number> = {}
@@ -132,10 +141,9 @@ export function DashboardKPIs({
         let val = 0
         if (field === "orders") {
           val = 1
-        } else if (field === "revenue") {
-          val = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
         } else {
-          val = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalProfit), 0)
+          const totals = getOrderTotals(o)
+          val = field === "revenue" ? totals.totalRevenue : totals.totalProfit
         }
         dailyMap[d] = (dailyMap[d] || 0) + val
       })

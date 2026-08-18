@@ -97,14 +97,17 @@ export async function getCRMCustomers() {
     let lifetimeProfit = 0;
     let lastOrderDate: Date | null = null;
 
-    c.orders.forEach(o => {
+    const orders = c.orders || [];
+    orders.forEach(o => {
       lifetimeRevenue += Number(o.total_amount || 0);
-      o.items.forEach(i => {
-        lifetimeProfit += i.totalProfit;
+      const items = o.items || [];
+      items.forEach(i => {
+        lifetimeProfit += Number(i.totalProfit || 0);
       });
       if (o.created_at) {
-        if (!lastOrderDate || new Date(o.created_at) > lastOrderDate) {
-          lastOrderDate = new Date(o.created_at);
+        const orderDate = new Date(o.created_at);
+        if (!lastOrderDate || orderDate > lastOrderDate) {
+          lastOrderDate = orderDate;
         }
       }
     });
@@ -113,17 +116,18 @@ export async function getCRMCustomers() {
     if (!lastOrderDate) {
       status = "New";
     } else {
-      const daysSinceLastOrder = (new Date().getTime() - lastOrderDate.getTime()) / (1000 * 3600 * 24);
+      const lastTime = new Date(lastOrderDate).getTime();
+      const daysSinceLastOrder = (Date.now() - lastTime) / (1000 * 3600 * 24);
       if (daysSinceLastOrder > 60) status = "Dormant";
       if (lifetimeRevenue > 50000 && status !== "Dormant") status = "High Value";
     }
 
     return {
       id: c.id,
-      shop_name: c.shop_name,
-      city: c.city,
-      phone: c.phone,
-      totalOrders: c.orders.length,
+      shop_name: c.shop_name || "Unknown Shop",
+      city: c.city || "",
+      phone: c.phone || "",
+      totalOrders: orders.length,
       lifetimeRevenue,
       lifetimeProfit,
       lastOrderDate,

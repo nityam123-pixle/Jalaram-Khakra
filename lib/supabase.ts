@@ -486,7 +486,9 @@ export const calculateDynamicProfit = (
     }
   } else {
     // For kg-based items: profit increases by ₹1 for every ₹1 increase from base price
-    return khakhraType.baseProfit + (actualPrice - khakhraType.basePrice)
+    const baseProfit = (khakhraType as any).baseProfit || 0
+    const basePrice = (khakhraType as any).basePrice || 0
+    return baseProfit + (actualPrice - basePrice)
   }
 }
 
@@ -521,7 +523,9 @@ export const getPriceRange = (khakhraType: (typeof KHAKHRA_TYPES)[0], isPacket =
       return Array.from({ length: maxPacketPrice - basePacketPrice + 1 }, (_, i) => basePacketPrice + i)
     }
   } else {
-    return Array.from({ length: khakhraType.maxPrice - khakhraType.basePrice + 1 }, (_, i) => khakhraType.basePrice + i)
+    const basePrice = (khakhraType as any).basePrice || 0
+    const maxPrice = (khakhraType as any).maxPrice || basePrice
+    return Array.from({ length: maxPrice - basePrice + 1 }, (_, i) => basePrice + i)
   }
 }
 

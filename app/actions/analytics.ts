@@ -2,6 +2,7 @@
 
 import { prisma } from "../../lib/prisma"
 import { serializePrisma } from "../../lib/prisma-serializer"
+import { getOrderTotals } from "../../lib/order-utils"
 
 export async function getDashboardAnalytics() {
   const [totalOrders, pendingOrders, completedOrders] = await Promise.all([
@@ -10,8 +11,7 @@ export async function getDashboardAnalytics() {
     prisma.order.count({ where: { status: "completed" } })
   ])
 
-  // Get overall totals from Order level (assuming total_amount matches sum of items)
-  // Or we can just sum up the order_items
+  // Get overall totals from OrderItem aggregate
   const metrics = await prisma.orderItem.aggregate({
     _sum: {
       totalRevenue: true,
@@ -20,8 +20,12 @@ export async function getDashboardAnalytics() {
     }
   })
 
-  const totalEarnings = metrics._sum.totalRevenue || 0
-  const totalProfit = metrics._sum.totalProfit || 0
+  const orderSum = await prisma.order.aggregate({
+    _sum: { total_amount: true }
+  })
+
+  const totalEarnings = Math.max(Number(metrics._sum.totalRevenue || 0), Number(orderSum._sum.total_amount || 0))
+  const totalProfit = Number(metrics._sum.totalProfit || 0)
 
   // Profit and Quantity grouped by Category
   const byCategory = await prisma.orderItem.groupBy({
@@ -37,7 +41,6 @@ export async function getDashboardAnalytics() {
     }
   })
 
-  // Format by Category into a friendly array
   const profitByCategory = byCategory.map(c => ({
     label: c.categoryName,
     profit: c._sum.totalProfit || 0,
@@ -55,12 +58,6 @@ export async function getDashboardAnalytics() {
 }
 
 export async function getOrdersForChart() {
-  // To keep compatibility with the existing chart, we might just return the raw items
-  // or a grouped timeline. The existing chart expects `orders` array and iterates them.
-  // We will pre-aggregate the daily revenue/profit to make the chart rendering lightning fast.
-  
-  // Since Prisma doesn't support grouping by raw DATE easily across all DBs, we can just 
-  // fetch order items with their created_at and do a quick grouping in JS which is very fast.
   const items = await prisma.orderItem.findMany({
     select: {
       createdAt: true,
@@ -99,14 +96,14 @@ export async function getMonthlyOrdersByCustomer(year: number, month: number) {
           }
         },
         orderBy: { created_at: 'asc' },
-        include: { invoice: true }
+        include: { invoice: true, items: true }
       }
     },
     orderBy: { shop_name: 'asc' }
   });
 
   const formatted = customers.map(c => {
-    const totalAmount = c.orders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const totalAmount = c.orders.reduce((sum, o) => sum + getOrderTotals(o).totalRevenue, 0);
     return {
       id: c.id,
       shop_name: c.shop_name,
@@ -118,7 +115,6 @@ export async function getMonthlyOrdersByCustomer(year: number, month: number) {
 
   return serializePrisma(formatted);
 }
-
 
 export async function getRecentOrders(take = 8) {
   const orders = await prisma.order.findMany({
@@ -181,14 +177,15 @@ export async function getExecutiveSummary() {
   const [
     totalOrders,
     revenueResult,
+    orderSumResult,
     profitResult,
     citiesQuery,
     customerOrderGroups,
     categoryStats,
-    monthlyGroups
   ] = await Promise.all([
     prisma.order.count(),
     prisma.orderItem.aggregate({ _sum: { totalRevenue: true, quantity: true } }),
+    prisma.order.aggregate({ _sum: { total_amount: true } }),
     prisma.orderItem.aggregate({ _sum: { totalProfit: true } }),
     prisma.order.findMany({ select: { city: true }, distinct: ['city'] }),
     prisma.order.groupBy({ by: ['customerId'], _count: { id: true } }),
@@ -196,25 +193,20 @@ export async function getExecutiveSummary() {
       by: ['categoryName'],
       _sum: { totalRevenue: true, totalProfit: true, quantity: true },
     }),
-    prisma.order.groupBy({
-      by: ['created_at'],
-      _sum: { total_amount: true },
-      _count: { id: true }
-    })
   ]);
 
-  const totalRevenue = revenueResult._sum.totalRevenue || 0;
-  const totalProfit = profitResult._sum.totalProfit || 0;
+  const totalRevenue = Math.max(
+    Number(revenueResult._sum.totalRevenue || 0),
+    Number(orderSumResult._sum.total_amount || 0)
+  );
+  const totalProfit = Number(profitResult._sum.totalProfit || 0);
   const totalQuantity = revenueResult._sum.quantity || 0;
 
-  // Process monthly data (grouping by month in JS since Prisma groupBy month is DB-specific)
+  // Process monthly data
   const monthlyMap = new Map<string, { monthKey: string, month: string, revenue: number, profit: number, orders: number }>();
   
-  // Note: For large DBs, doing month aggregation in DB is better, but this works for now.
-  // Instead of querying all orders, we can just aggregate from order items and orders
-  
   const allOrders = await prisma.order.findMany({
-    select: { created_at: true, total_amount: true, id: true },
+    select: { created_at: true, total_amount: true, id: true, items: true },
     orderBy: { created_at: 'asc' }
   });
 
@@ -228,21 +220,10 @@ export async function getExecutiveSummary() {
       monthlyMap.set(monthKey, { monthKey, month: monthLabel, revenue: 0, profit: 0, orders: 0 });
     }
     const stat = monthlyMap.get(monthKey)!;
-    stat.revenue += Number(o.total_amount || 0);
+    const totals = getOrderTotals(o);
+    stat.revenue += totals.totalRevenue;
+    stat.profit += totals.totalProfit;
     stat.orders += 1;
-  });
-
-  // To get profit per month easily without a huge join, we can do a similar pass on order items
-  const allItems = await prisma.orderItem.findMany({
-    select: { createdAt: true, totalProfit: true }
-  });
-
-  allItems.forEach(i => {
-    const date = new Date(i.createdAt);
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    if (monthlyMap.has(monthKey)) {
-      monthlyMap.get(monthKey)!.profit += i.totalProfit;
-    }
   });
 
   const monthlyPerformance = Array.from(monthlyMap.entries())
@@ -277,13 +258,13 @@ export async function getCustomerIntelligence() {
     take: 10,
     include: {
       orders: {
-        select: { total_amount: true }
+        include: { items: true }
       }
     }
   });
 
   const processed = topCustomersByRevenue.map(c => {
-    const rev = c.orders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const rev = c.orders.reduce((sum, o) => sum + getOrderTotals(o).totalRevenue, 0);
     return {
       id: c.id,
       name: c.shop_name,
@@ -298,4 +279,3 @@ export async function getCustomerIntelligence() {
     mostFrequent: [...processed].sort((a,b) => b.totalOrders - a.totalOrders).slice(0, 5)
   });
 }
-

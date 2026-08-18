@@ -33,8 +33,14 @@ export async function getFullCatalog() {
   })
 }
 
-export async function createCategory(data: { name: string; displayOrder: number; isActive: boolean }) {
-  const cat = await prisma.productCategory.create({ data })
+export async function createCategory(data: { name: string; slug?: string; displayOrder: number; isActive: boolean }) {
+  const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+  const cat = await prisma.productCategory.create({ 
+    data: {
+      ...data,
+      slug
+    } 
+  })
   revalidatePath("/products")
   return cat
 }

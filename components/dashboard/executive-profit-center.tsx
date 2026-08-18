@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { IndianRupee, PieChart as PieIcon, BarChart3, TrendingUp, Trophy, AlertTriangle, Lightbulb } from "lucide-react"
+import { getOrderTotals } from "@/lib/order-utils"
 import {
   ResponsiveContainer,
   PieChart,
@@ -49,6 +50,21 @@ export function ExecutiveProfitCenter({
 
     currentOrders.forEach((order) => {
       const items = order.items ?? []
+      if (items.length === 0) {
+        const totals = getOrderTotals(order)
+        totalRevenue += totals.totalRevenue
+        totalCost += totals.totalCost
+        totalUnits += totals.totalKhakhraKg || totals.packetTotal || 1
+        const cat = "General"
+        if (!breakdown[cat]) {
+          breakdown[cat] = { name: cat, revenue: 0, cost: 0, profit: 0, units: 0 }
+        }
+        breakdown[cat].revenue += totals.totalRevenue
+        breakdown[cat].cost += totals.totalCost
+        breakdown[cat].profit += totals.totalProfit
+        breakdown[cat].units += totals.totalKhakhraKg || totals.packetTotal || 1
+        return
+      }
       items.forEach((item: any) => {
         const cat = item.categoryName || "Other"
         const rev = Number(item.totalRevenue) || 0

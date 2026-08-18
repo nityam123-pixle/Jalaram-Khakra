@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Plus, CheckCircle, UserPlus, FileText, Clipboard, IndianRupee, Layers } from "lucide-react"
+import { getOrderTotals } from "@/lib/order-utils"
 
 interface ActivityFeedProps {
   orders: any[]
@@ -17,7 +18,8 @@ export function ActivityFeed({ orders, customers, catalog = [] }: ActivityFeedPr
     // 1. Order Created events
     orders.forEach((o) => {
       if (o.created_at) {
-        const rev = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
+        const totals = getOrderTotals(o)
+        const rev = totals.totalRevenue
         events.push({
           id: `created-${o.id}`,
           type: "order_created",

@@ -1,18 +1,20 @@
 import { getIncomingShipments, getSuppliers, getPurchaseOrders } from "@/app/actions/inventory"
-import { IncomingShipmentsClient } from "./client"
+import { IncomingDashboard } from "@/components/inventory/incoming/incoming-dashboard"
+
+export const dynamic = "force-dynamic"
 
 export default async function IncomingShipmentsPage() {
   const [shipments, suppliers, pos] = await Promise.all([
     getIncomingShipments(),
     getSuppliers(),
-    getPurchaseOrders()
+    getPurchaseOrders(),
   ])
 
   return (
-    <IncomingShipmentsClient 
-      initialData={shipments} 
-      suppliers={suppliers} 
-      pos={pos} 
+    <IncomingDashboard
+      initialData={shipments}
+      suppliers={suppliers}
+      pos={pos}
     />
   )
 }

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { OrderStatusBadge } from "./order-status-badge"
 import { OrderActionsMenu } from "./order-actions-menu"
+import { getOrderTotals } from "@/lib/order-utils"
 import {
   MapPin,
   Package,
@@ -41,7 +42,7 @@ interface OrdersTableProps {
   onDelete: (id: string) => void
   onBulkStatusChange: (status: string) => void
   onBulkDelete: () => void
-  sortColumn: "date" | "total" | null
+  sortColumn?: "date" | "total" | null
   sortDirection: "asc" | "desc"
   onSort: (column: "date" | "total") => void
 }
@@ -76,21 +77,21 @@ export function OrdersTable({
 
   return (
     <div className="relative">
-      <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-sm">
+      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
         <Table>
-          <TableHeader className="bg-muted/40 border-b border-border/80">
+          <TableHeader className="bg-muted/40 border-b border-border">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[45px] py-4 pl-4">
+              <TableHead className="w-[45px] py-3.5 pl-4">
                 <Checkbox
                   checked={allSelected}
                   onCheckedChange={handleSelectAllChange}
                   aria-label="Select all orders"
                 />
               </TableHead>
-              <TableHead className="py-4">Order ID & Date</TableHead>
-              <TableHead className="py-4">Customer & City</TableHead>
-              <TableHead className="py-4">Items Summary</TableHead>
-              <TableHead className="py-4 text-right">
+              <TableHead className="py-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Order ID & Date</TableHead>
+              <TableHead className="py-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customer & City</TableHead>
+              <TableHead className="py-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Items Summary</TableHead>
+              <TableHead className="py-3.5 text-right">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -101,9 +102,9 @@ export function OrdersTable({
                   <ArrowUpDown className="h-3 w-3" />
                 </Button>
               </TableHead>
-              <TableHead className="py-4 text-right">Profit & Margin</TableHead>
-              <TableHead className="py-4">Status</TableHead>
-              <TableHead className="w-[50px] py-4 pr-4 text-right"></TableHead>
+              <TableHead className="py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Profit & Margin</TableHead>
+              <TableHead className="py-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</TableHead>
+              <TableHead className="w-[50px] py-3.5 pr-4 text-right"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-border/60">
@@ -111,19 +112,19 @@ export function OrdersTable({
               const isSelected = selectedOrderIds.includes(order.id)
               const items = order.items ?? []
               const totalItemsCount = items.length
-              const totalWeight = Number(order.total_khakhra_kg) || 0
               
-              // Sum prices from orderItems
-              const totalRevenue = items.reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
-              const totalCost = items.reduce((acc: number, i: any) => acc + Number(i.totalCost), 0)
-              const totalProfit = items.reduce((acc: number, i: any) => acc + Number(i.totalProfit), 0)
-              const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+              const totals = getOrderTotals(order)
+              const totalRevenue = totals.totalRevenue
+              const totalCost = totals.totalCost
+              const totalProfit = totals.totalProfit
+              const marginPercent = totals.marginPercent
+              const totalWeight = totals.totalKhakhraKg
 
               return (
                 <TableRow
                   key={order.id}
-                  className={`hover:bg-muted/10 transition-colors duration-150 ${
-                    isSelected ? "bg-muted/20" : ""
+                  className={`hover:bg-muted/30 transition-colors duration-150 ${
+                    isSelected ? "bg-muted/40" : ""
                   }`}
                 >
                   <TableCell className="py-3.5 pl-4">
@@ -183,28 +184,28 @@ export function OrdersTable({
                       return (
                         <HoverCard openDelay={100} closeDelay={100}>
                           <HoverCardTrigger asChild>
-                            <div className="flex flex-wrap items-center gap-1 cursor-help">
-                              <Package className="h-3.5 w-3.5 text-purple-500 shrink-0" />
-                              <span className="text-xs font-medium text-foreground">
+                            <div className="flex flex-wrap items-center gap-1.5 cursor-help">
+                              <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              <span className="text-xs font-medium text-foreground font-mono">
                                 {totalItemsCount} {totalItemsCount === 1 ? "item" : "items"}
                               </span>
                               {kgTotal > 0 && (
-                                <span className="text-[10px] bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border border-purple-100 dark:border-purple-900/40 rounded px-1.5 py-0.5 font-medium">
+                                <span className="text-[10px] bg-muted/80 text-foreground border border-border/80 rounded-md px-1.5 py-0.5 font-mono font-semibold">
                                   {kgTotal % 1 === 0 ? kgTotal : kgTotal.toFixed(1)}kg
                                 </span>
                               )}
                               {!kgTotal && fallbackWeight > 0 && (
-                                <span className="text-[10px] bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border border-purple-100 dark:border-purple-900/40 rounded px-1.5 py-0.5 font-medium">
+                                <span className="text-[10px] bg-muted/80 text-foreground border border-border/80 rounded-md px-1.5 py-0.5 font-mono font-semibold">
                                   {fallbackWeight.toFixed(1)}kg
                                 </span>
                               )}
                               {packetTotal > 0 && (
-                                <span className="text-[10px] bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40 rounded px-1.5 py-0.5 font-medium">
+                                <span className="text-[10px] bg-muted/80 text-foreground border border-border/80 rounded-md px-1.5 py-0.5 font-mono font-semibold">
                                   {packetTotal} pkt
                                 </span>
                               )}
                               {boxTotal > 0 && (
-                                <span className="text-[10px] bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 border border-teal-100 dark:border-teal-900/40 rounded px-1.5 py-0.5 font-medium">
+                                <span className="text-[10px] bg-muted/80 text-foreground border border-border/80 rounded-md px-1.5 py-0.5 font-mono font-semibold">
                                   {boxTotal} box
                                 </span>
                               )}

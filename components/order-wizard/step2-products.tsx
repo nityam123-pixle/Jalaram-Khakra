@@ -110,6 +110,8 @@ export function Step2Products({
 
     const revenue = price * qty
     const profit = revenue - (costPrice * qty)
+    const minSellingPrice = variant.pricingRule?.minSellingPrice != null ? Number(variant.pricingRule.minSellingPrice) : null
+    const maxSellingPrice = variant.pricingRule?.maxSellingPrice != null ? Number(variant.pricingRule.maxSellingPrice) : null
 
     const existingIndex = items.findIndex(i => i.variantId === variant.id)
     if (existingIndex >= 0) {
@@ -118,7 +120,9 @@ export function Step2Products({
         quantity: qty,
         unitSellingPrice: price,
         totalRevenue: revenue,
-        totalProfit: profit
+        totalProfit: profit,
+        minSellingPrice,
+        maxSellingPrice
       } : item))
     } else {
       setItems(prev => [...prev, {
@@ -133,7 +137,9 @@ export function Step2Products({
         unitCostPrice: costPrice,
         unitSellingPrice: price,
         totalRevenue: revenue,
-        totalProfit: profit
+        totalProfit: profit,
+        minSellingPrice,
+        maxSellingPrice
       }])
     }
   }
@@ -150,11 +156,11 @@ export function Step2Products({
   const totalRevenue = items.reduce((sum, i) => sum + i.totalRevenue, 0)
 
   // Check if any categories match filters
-  const visibleCategories = Object.entries(groupedByCategory).filter(([category, categoryVariants]) => {
+  const visibleCategories = (Object.entries(groupedByCategory) as [string, typeof allVariants][]).filter(([category, categoryVariants]) => {
     if (selectedCategoryTab !== "ALL" && category !== selectedCategoryTab) {
       return false
     }
-    const matchingCount = categoryVariants.filter(v => {
+    const matchingCount = categoryVariants.filter((v: any) => {
       if (searchQuery.trim() !== "") {
         const query = searchQuery.toLowerCase()
         return (
@@ -231,7 +237,7 @@ export function Step2Products({
             </div>
           ) : (
             visibleCategories.map(([category, categoryVariants]) => {
-              const matchingVariants = categoryVariants.filter(v => {
+              const matchingVariants = categoryVariants.filter((v: any) => {
                 if (searchQuery.trim() !== "") {
                   const query = searchQuery.toLowerCase()
                   return (
@@ -250,7 +256,7 @@ export function Step2Products({
                     </h3>
                   </div>
                   <div className="divide-y divide-border">
-                    {matchingVariants.map((v) => {
+                    {matchingVariants.map((v: any) => {
                       const pricingRule = v.pricingRule
                       const min = pricingRule?.minSellingPrice ? Number(pricingRule.minSellingPrice) : null
                       const max = pricingRule?.maxSellingPrice ? Number(pricingRule.maxSellingPrice) : null
@@ -393,25 +399,29 @@ export function Step2Products({
             {items.length === 0 ? (
               <div className="text-center text-muted-foreground py-10">Cart is empty</div>
             ) : (
-              items.map((item) => (
-                <div key={item.id} className="border border-border rounded-lg p-3 text-sm relative group bg-card shadow-sm">
-                  <div className="font-medium pr-8">{item.productName}</div>
-                  <div className="text-muted-foreground text-xs mt-0.5">{item.variantName}</div>
-                  <div className="flex justify-between items-center mt-2">
-                    <div className="text-muted-foreground text-xs">
-                      {item.quantity} x ₹{item.unitSellingPrice.toFixed(2)}
+              items.map((item) => {
+                const unitPrice = Number(item.unitSellingPrice || 0)
+                const rev = Number(item.totalRevenue || (item.quantity * unitPrice) || 0)
+                return (
+                  <div key={item.id} className="border border-border rounded-lg p-3 text-sm relative group bg-card shadow-sm">
+                    <div className="font-medium pr-8">{item.productName || "Product"}</div>
+                    <div className="text-muted-foreground text-xs mt-0.5">{item.variantName || "Default"}</div>
+                    <div className="flex justify-between items-center mt-2">
+                      <div className="text-muted-foreground text-xs">
+                        {item.quantity} x ₹{unitPrice.toFixed(2)}
+                      </div>
+                      <div className="font-semibold">₹{rev.toFixed(2)}</div>
                     </div>
-                    <div className="font-semibold">₹{item.totalRevenue.toFixed(2)}</div>
+                    
+                    {/* Quick Delete */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 dark:bg-background/90 border border-border backdrop-blur-sm p-1 rounded-md">
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemove(item.variantId)}>
+                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      </Button>
+                    </div>
                   </div>
-                  
-                  {/* Quick Delete */}
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 dark:bg-background/90 border border-border backdrop-blur-sm p-1 rounded-md">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemove(item.variantId)}>
-                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                    </Button>
-                  </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
 
@@ -423,7 +433,7 @@ export function Step2Products({
               </div>
               <div className="flex justify-between text-sm md:mb-4">
                 <span className="text-muted-foreground font-medium">Total</span>
-                <span className="font-bold text-lg">₹{totalRevenue.toFixed(2)}</span>
+                <span className="font-bold text-lg">₹{(Number(totalRevenue) || 0).toFixed(2)}</span>
               </div>
             </div>
             <Button className="w-full sm:w-auto md:w-full h-12" size="lg" disabled={items.length === 0} onClick={onNext}>

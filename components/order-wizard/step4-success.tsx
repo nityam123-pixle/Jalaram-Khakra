@@ -88,23 +88,23 @@ export function Step4Success({ orderData }: { orderData: any }) {
             <div className="grid grid-cols-2 gap-y-4 text-left">
               <div>
                 <p className="text-sm text-muted-foreground">Order ID</p>
-                <p className="font-mono text-sm font-medium mt-1">#{orderData.id.slice(0, 8).toUpperCase()}</p>
+                <p className="font-mono text-sm font-medium mt-1">#{orderData.id ? orderData.id.slice(0, 8).toUpperCase() : "ORDER"}</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Date</p>
-                <p className="text-sm font-medium mt-1">{format(new Date(orderData.created_at), 'PPp')}</p>
+                <p className="text-sm font-medium mt-1">{orderData.created_at ? format(new Date(orderData.created_at), 'PPp') : format(new Date(), 'PPp')}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Revenue</p>
                 <p className="text-lg font-semibold mt-1">
-                  ₹{(orderData.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0).toFixed(2)}
+                  ₹{(orderData.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue || 0), 0).toFixed(2)}
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Status</p>
                 <div className="inline-flex mt-1">
                   <span className="bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full text-xs font-medium capitalize">
-                    {orderData.status}
+                    {orderData.status || "Pending"}
                   </span>
                 </div>
               </div>
@@ -113,7 +113,7 @@ export function Step4Success({ orderData }: { orderData: any }) {
         </Card>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Link href={`/orders/${orderData.id}`} className="w-full">
+          <Link href={orderData.id ? `/orders/${orderData.id}` : "/orders"} className="w-full">
             <Button variant="outline" className="w-full" size="lg">
               <ExternalLink className="w-4 h-4 mr-2" /> View Details
             </Button>

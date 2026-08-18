@@ -19,6 +19,8 @@ export type OrderItemData = {
   unitSellingPrice: number
   totalRevenue: number
   totalProfit: number
+  minSellingPrice?: number | null
+  maxSellingPrice?: number | null
 }
 
 export type SelectedCustomer = {
@@ -29,24 +31,60 @@ export type SelectedCustomer = {
   phone?: string | null
 }
 
+import { User, Package, CheckSquare, CheckCircle2 } from "lucide-react"
+
 export function OrderWizard({ catalogData }: { catalogData: any }) {
   const [step, setStep] = useState(1)
   const [customer, setCustomer] = useState<SelectedCustomer | null>(null)
   const [items, setItems] = useState<OrderItemData[]>([])
   const [orderData, setOrderData] = useState<any>(null)
 
+  const stepLabels = [
+    { num: 1, label: "Customer", icon: User },
+    { num: 2, label: "Products", icon: Package },
+    { num: 3, label: "Review", icon: CheckSquare },
+    { num: 4, label: "Complete", icon: CheckCircle2 },
+  ]
+
   return (
-    <div className="max-w-4xl mx-auto w-full p-4 md:p-6 pb-24">
+    <div className="max-w-4xl mx-auto w-full p-2 md:p-4 pb-12">
       {/* Step Indicator */}
-      <div className="mb-8 flex items-center justify-between relative">
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-muted -z-10 rounded-full overflow-hidden">
-          <div className="h-full bg-primary transition-all duration-300" style={{ width: `${((step - 1) / 3) * 100}%` }} />
+      <div className="mb-8">
+        <div className="grid grid-cols-4 gap-2 sm:gap-4">
+          {stepLabels.map((s) => {
+            const Icon = s.icon
+            const isCurrent = step === s.num
+            const isCompleted = step > s.num
+            return (
+              <div
+                key={s.num}
+                className={`flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl border transition-all ${
+                  isCurrent
+                    ? "bg-primary/5 border-primary/40 text-foreground font-semibold shadow-xs"
+                    : isCompleted
+                    ? "bg-muted/40 border-border/60 text-muted-foreground"
+                    : "bg-muted/10 border-border/30 text-muted-foreground/60"
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-colors ${
+                    isCurrent
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : isCompleted
+                      ? "bg-emerald-500 text-white"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {isCompleted ? "✓" : <Icon className="w-3.5 h-3.5" />}
+                </div>
+                <div className="hidden sm:block min-w-0">
+                  <p className="text-xs text-muted-foreground leading-none">Step {s.num}</p>
+                  <p className="text-xs font-semibold truncate mt-0.5">{s.label}</p>
+                </div>
+              </div>
+            )
+          })}
         </div>
-        {[1, 2, 3, 4].map((s) => (
-          <div key={s} className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm transition-colors ${s <= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border-2 border-background'}`}>
-            {s}
-          </div>
-        ))}
       </div>
 
       {step === 1 && (

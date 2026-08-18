@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { MoreHorizontal, FileText, Edit2, CheckCircle, Trash2, MessageCircle, Eye } from "lucide-react"
 import { toast } from "sonner"
 import { useState } from "react"
+import { getOrderTotals } from "@/lib/order-utils"
 
 interface OrderActionsMenuProps {
   order: any
@@ -23,7 +24,7 @@ export function OrderActionsMenu({
   order,
   onViewDetails,
   onStatusChange,
-  onDelete
+  onDelete,
 }: OrderActionsMenuProps) {
   const [generatingInvoice, setGeneratingInvoice] = useState(false)
 
@@ -44,7 +45,8 @@ export function OrderActionsMenu({
   }
 
   const handleWhatsAppShare = () => {
-    const total = (order.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
+    const totals = getOrderTotals(order)
+    const total = Math.round(totals.totalRevenue)
     const itemsText = (order.items ?? [])
       .map((i: any) => `${i.productName} (${i.variantName}) x ${i.quantity}`)
       .join(", ")

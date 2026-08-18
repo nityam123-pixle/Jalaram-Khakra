@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Landmark, Trophy, BarChart2, CalendarDays, RefreshCw } from "lucide-react"
 
@@ -15,53 +14,55 @@ interface OrdersInsightsProps {
 }
 
 export function OrdersInsights({ stats }: OrdersInsightsProps) {
-  const insights = stats;
-
   const items = [
     {
       label: "Top City",
-      value: insights.topCity,
+      value: stats.topCity || "None",
       icon: Landmark,
-      color: "text-blue-600 dark:text-blue-400"
     },
     {
       label: "Top Product",
-      value: insights.topProduct,
+      value: stats.topProduct || "None",
       icon: Trophy,
-      color: "text-amber-600 dark:text-amber-400"
     },
     {
       label: "Avg Order Value",
-      value: `₹${Math.round(insights.aov).toLocaleString("en-IN")}`,
+      value: `₹${Math.round(stats.aov || 0).toLocaleString("en-IN")}`,
       icon: BarChart2,
-      color: "text-emerald-600 dark:text-emerald-400"
     },
     {
       label: "Orders This Month",
-      value: insights.ordersThisMonth.toString(),
+      value: (stats.ordersThisMonth || 0).toString(),
       icon: CalendarDays,
-      color: "text-purple-600 dark:text-purple-400"
     },
     {
       label: "Repeat Customers",
-      value: `${Math.round(insights.repeatPercent)}%`,
+      value: `${Math.round(stats.repeatPercent || 0)}%`,
       icon: RefreshCw,
-      color: "text-rose-600 dark:text-rose-400"
     }
   ]
 
   return (
-    <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+    <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
       {items.map((item, idx) => {
         const IconComponent = item.icon
         return (
-          <Card key={idx} className="border border-border/60 bg-muted/20 dark:bg-muted/5 shadow-none rounded-lg">
-            <CardContent className="p-3.5 flex items-center justify-between">
+          <Card 
+            key={idx} 
+            className="border border-border bg-card shadow-sm rounded-xl overflow-hidden hover:border-ring/30 transition-colors"
+          >
+            <CardContent className="p-4 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">{item.label}</p>
-                <p className="text-sm font-bold text-foreground mt-1 truncate">{item.value}</p>
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider truncate">
+                  {item.label}
+                </p>
+                <p className="text-sm sm:text-base font-bold text-foreground mt-0.5 truncate font-mono">
+                  {item.value}
+                </p>
               </div>
-              <IconComponent className={`h-4 w-4 shrink-0 ${item.color}`} />
+              <div className="p-2 rounded-lg bg-muted/60 dark:bg-secondary/40 text-muted-foreground border border-border/40 shrink-0">
+                <IconComponent className="h-3.5 w-3.5" />
+              </div>
             </CardContent>
           </Card>
         )

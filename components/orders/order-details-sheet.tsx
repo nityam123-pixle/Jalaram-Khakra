@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useState } from "react"
+import { getOrderTotals } from "@/lib/order-utils"
 
 interface OrderDetailsSheetProps {
   order: any | null
@@ -43,13 +44,14 @@ export function OrderDetailsSheet({
 
   if (!order) return null
 
-  // Sum metrics dynamically from items
+  // Sum metrics dynamically from totals
   const items = order.items ?? []
-  const totalRevenue = items.reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
-  const totalCost = items.reduce((acc: number, i: any) => acc + Number(i.totalCost), 0)
-  const totalProfit = items.reduce((acc: number, i: any) => acc + Number(i.totalProfit), 0)
-  const totalWeight = Number(order.total_khakhra_kg) || 0
-  const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+  const totals = getOrderTotals(order)
+  const totalRevenue = totals.totalRevenue
+  const totalCost = totals.totalCost
+  const totalProfit = totals.totalProfit
+  const totalWeight = totals.totalKhakhraKg
+  const marginPercent = totals.marginPercent
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "N/A"

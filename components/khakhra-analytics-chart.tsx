@@ -20,7 +20,7 @@ export function KhakhraAnalyticsChart({ orders }: KhakhraAnalyticsProps) {
       if (order.khakhra_items) {
         order.khakhra_items.forEach((item) => {
           const khakhraType = KHAKHRA_TYPES.find((k) => k.name === item.khakhra_type)
-          const profit = khakhraType ? item.quantity_kg * (khakhraType.profit || 0) : 0
+          const profit = khakhraType ? item.quantity_kg * ((khakhraType as any).profit || (khakhraType as any).baseProfit || 0) : 0
 
           if (!khakhraAnalytics[item.khakhra_type]) {
             khakhraAnalytics[item.khakhra_type] = { quantity: 0, profit: 0, revenue: 0 }

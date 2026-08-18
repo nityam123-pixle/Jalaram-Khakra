@@ -3,13 +3,13 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Landmark, Trophy, ArrowUpRight, ArrowDownRight } from "lucide-react"
+import { getOrderTotals } from "@/lib/order-utils"
+import { getCategoryColor } from "./product-performance"
 
 interface TopPerformersProps {
   currentOrders: any[]
   priorOrders: any[]
 }
-
-import { getCategoryColor } from "./product-performance"
 
 export function TopPerformers({ currentOrders, priorOrders }: TopPerformersProps) {
   // 1. Calculate Top Cities dynamically
@@ -23,8 +23,9 @@ export function TopPerformers({ currentOrders, priorOrders }: TopPerformersProps
     currentOrders.forEach((o) => {
       if (o.city) {
         const city = o.city.trim().toLowerCase()
-        const rev = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
-        const profit = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalProfit), 0)
+        const totals = getOrderTotals(o)
+        const rev = totals.totalRevenue
+        const profit = totals.totalProfit
         totalRevenue += rev
 
         if (!currentCityStats[city]) {
@@ -46,7 +47,8 @@ export function TopPerformers({ currentOrders, priorOrders }: TopPerformersProps
     priorOrders.forEach((o) => {
       if (o.city) {
         const city = o.city.trim().toLowerCase()
-        const rev = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
+        const totals = getOrderTotals(o)
+        const rev = totals.totalRevenue
         if (!priorCityStats[city]) {
           priorCityStats[city] = { revenue: 0 }
         }

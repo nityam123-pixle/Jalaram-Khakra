@@ -96,10 +96,10 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
       setShopName(order.shop_name)
       setAddress(order.address)
       setCity(order.city)
-      setWantsPatra(order.wants_patra)
+      setWantsPatra(Boolean(order.wants_patra))
       setPatraPackets(order.patra_packets ?? 0)
       setPatraPrice(order.patra_price_per_packet ?? PATRA_PRICE_MIN)
-      setWantsFulvadi(order.wants_fulvadi)
+      setWantsFulvadi(Boolean(order.wants_fulvadi))
       setFulvadiPackets(order.fulvadi_packets ?? 0)
 
       if (order.khakhra_items && order.khakhra_items.length > 0) {
@@ -291,7 +291,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
           currentItem.price = BHAKARWADI_PRICE_MIN
         }
       } else {
-        currentItem[field] = value
+        ;(currentItem as any)[field] = value
       }
 
       updated[index] = currentItem
@@ -333,7 +333,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onOrderUpdated }: E
           currentItem.price = 90
         }
       } else {
-        currentItem[field] = value
+        ;(currentItem as any)[field] = value
       }
 
       updated[index] = currentItem

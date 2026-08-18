@@ -13,6 +13,7 @@ import { Plus, X, IndianRupee, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 import { getFullCatalog } from "@/app/actions/catalog"
+import { createCustomer } from "@/app/actions/customers"
 import { createOrder, type OrderItemInput } from "@/app/actions/order"
 import { CITIES } from "@/lib/supabase"
 
@@ -40,6 +41,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
   const [catalogLoading, setCatalogLoading] = useState(true)
 
   // Customer Data
+  const [customerId, setCustomerId] = useState<string | null>(null)
   const [shopName, setShopName] = useState("")
   const [address, setAddress] = useState("")
   const [city, setCity] = useState("")
@@ -145,10 +147,18 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
         sellingPrice: i.sellingPrice
       }))
 
+      let finalCustomerId = customerId
+      if (!finalCustomerId) {
+        const newCust = await createCustomer({
+          shop_name: shopName,
+          city,
+          address,
+        })
+        finalCustomerId = newCust.id
+      }
+
       await createOrder({
-        shopName,
-        city,
-        address,
+        customerId: finalCustomerId,
         items: orderItemsInput
       })
 
@@ -158,6 +168,7 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
       })
 
       // Reset
+      setCustomerId(null)
       setShopName("")
       setAddress("")
       setCity("")
@@ -197,8 +208,12 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
                   <CustomerSearchInput
                     id="shopName"
                     value={shopName}
-                    onChange={setShopName}
+                    onChange={(val) => {
+                      setShopName(val)
+                      setCustomerId(null)
+                    }}
                     onCustomerSelect={(customer) => {
+                      setCustomerId(customer.id)
                       setShopName(customer.shop_name)
                       setCity(customer.city)
                       setAddress(customer.address ?? "")

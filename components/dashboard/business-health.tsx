@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
+import { getOrderTotals } from "@/lib/order-utils"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Flame, ShieldAlert, Sparkles, Trophy, Lightbulb, Bell, AlertTriangle } from "lucide-react"
@@ -65,11 +66,10 @@ export function BusinessHealth({ currentOrders, priorOrders, customers, catalog 
       if (s === "completed" || s === "delivered") completedCount++
       if (s === "cancelled") cancelledCount++
 
-      const items = o.items ?? []
-      items.forEach((item: any) => {
-        currentRevenue += Number(item.totalRevenue) || 0
-        currentCost += Number(item.totalCost) || 0
-      })
+      const totals = getOrderTotals(o)
+      currentRevenue += totals.totalRevenue
+      currentCost += totals.totalCost
+
       const custId = o.customerId || o.shop_name
       if (custId) {
         currentCustomerFreq[custId] = (currentCustomerFreq[custId] || 0) + 1
@@ -84,11 +84,9 @@ export function BusinessHealth({ currentOrders, priorOrders, customers, catalog 
     let priorCost = 0
     let priorOrdersCount = priorOrders.length
     priorOrders.forEach((o) => {
-      const items = o.items ?? []
-      items.forEach((item: any) => {
-        priorRevenue += Number(item.totalRevenue) || 0
-        priorCost += Number(item.totalCost) || 0
-      })
+      const totals = getOrderTotals(o)
+      priorRevenue += totals.totalRevenue
+      priorCost += totals.totalCost
     })
     const priorProfit = priorRevenue - priorCost
     const priorMargin = priorRevenue > 0 ? (priorProfit / priorRevenue) * 100 : 0
@@ -185,7 +183,7 @@ export function BusinessHealth({ currentOrders, priorOrders, customers, catalog 
             acc +
             (o.items ?? [])
               .filter((i: any) => i.categoryName === cat)
-              .reduce((s, i: any) => s + (Number(i.totalCost) || 0), 0),
+              .reduce((s: number, i: any) => s + (Number(i.totalCost) || 0), 0),
           0
         )
         const margin = rev > 0 ? ((rev - catCost) / rev) * 100 : 0
@@ -237,8 +235,8 @@ export function BusinessHealth({ currentOrders, priorOrders, customers, catalog 
     const cityRevenue: Record<string, number> = {}
     currentOrders.forEach((o) => {
       if (o.city) {
-        const rev = (o.items ?? []).reduce((s: number, i: any) => s + Number(i.totalRevenue), 0)
-        cityRevenue[o.city] = (cityRevenue[o.city] || 0) + rev
+        const totals = getOrderTotals(o)
+        cityRevenue[o.city] = (cityRevenue[o.city] || 0) + totals.totalRevenue
       }
     })
     let topCity = "N/A"

@@ -9,41 +9,45 @@ interface OrderStatusBadgeProps {
 export function OrderStatusBadge({ status }: OrderStatusBadgeProps) {
   const s = status?.toLowerCase() || "pending"
 
-  let bg = ""
-  let text = ""
+  let dotColor = ""
+  let badgeStyle = ""
   let label = ""
 
   switch (s) {
     case "completed":
     case "delivered":
-      bg = "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900"
-      text = "text-emerald-700 dark:text-emerald-400"
+      dotColor = "bg-emerald-500"
+      badgeStyle = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
       label = s === "completed" ? "Completed" : "Delivered"
       break
     case "pending":
-      bg = "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900"
-      text = "text-amber-700 dark:text-amber-400"
+      dotColor = "bg-amber-500"
+      badgeStyle = "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
       label = "Pending"
       break
     case "processing":
-      bg = "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900"
-      text = "text-blue-700 dark:text-blue-400"
+      dotColor = "bg-blue-500"
+      badgeStyle = "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
       label = "Processing"
       break
     case "cancelled":
-      bg = "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900"
-      text = "text-rose-700 dark:text-rose-400"
+      dotColor = "bg-rose-500"
+      badgeStyle = "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
       label = "Cancelled"
       break
     default:
-      bg = "bg-muted border-border"
-      text = "text-muted-foreground"
+      dotColor = "bg-muted-foreground"
+      badgeStyle = "bg-muted/60 text-muted-foreground border-border"
       label = status
   }
 
   return (
-    <Badge variant="outline" className={`font-medium text-xs px-2.5 py-0.5 rounded-full ${bg} ${text}`}>
-      {label}
+    <Badge 
+      variant="outline" 
+      className={`font-semibold text-[11px] px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 border shadow-none ${badgeStyle}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dotColor} shrink-0`} />
+      <span>{label}</span>
     </Badge>
   )
 }

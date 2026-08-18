@@ -173,7 +173,7 @@ export async function getCurrentInventory() {
 export async function adjustStock(
   variantId: string,
   adjustment: number,
-  notes: string
+  notes: string = ""
 ) {
   const level = await prisma.inventoryLevel.findUnique({ where: { variantId } });
   if (!level) throw new Error("Inventory level not found");
@@ -461,10 +461,106 @@ export async function updatePurchaseOrderStatus(
         ? new Date(additionalData.invoiceDate)
         : undefined,
     },
+    include: {
+      supplier: true,
+      shipments: true,
+    }
   });
+
+  // Auto-create or link shipment when PO moves to ORDERED or IN_TRANSIT if none exists
+  if (status === "ORDERED" || status === "IN_TRANSIT") {
+    if (po.shipments.length === 0) {
+      const count = await prisma.incomingShipment.count();
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const shipmentNumber = `SHP-${today}-${String(count + 1).padStart(3, "0")}`;
+      await prisma.incomingShipment.create({
+        data: {
+          shipmentNumber,
+          purchaseOrderId: po.id,
+          supplierId: po.supplierId,
+          transportName: po.transportDetails || "Standard Transport",
+          expectedArrival: po.expectedDelivery,
+          status: status === "IN_TRANSIT" ? "IN_TRANSIT" : "PENDING",
+        }
+      });
+      revalidatePath("/inventory/incoming");
+    }
+  }
+
   revalidatePath("/inventory/purchase-orders");
   revalidatePath("/inventory");
   return po;
+}
+
+export async function deletePurchaseOrder(id: string) {
+  await prisma.$transaction(async (tx) => {
+    // Disassociate or delete linked incoming shipments that haven't been received
+    const shipments = await tx.incomingShipment.findMany({
+      where: { purchaseOrderId: id }
+    });
+    for (const shp of shipments) {
+      if (shp.status !== "COMPLETED") {
+        await tx.stockReceivingLog.deleteMany({
+          where: { shipmentId: shp.id }
+        });
+        await tx.incomingShipment.delete({
+          where: { id: shp.id }
+        });
+      }
+    }
+    await tx.purchaseOrderItem.deleteMany({
+      where: { purchaseOrderId: id }
+    });
+    await tx.purchaseOrder.delete({
+      where: { id }
+    });
+  });
+  revalidatePath("/inventory/purchase-orders");
+  revalidatePath("/inventory/incoming");
+  revalidatePath("/inventory");
+  return { success: true };
+}
+
+export async function bulkDeletePurchaseOrders(ids: string[]) {
+  await prisma.$transaction(async (tx) => {
+    for (const id of ids) {
+      const shipments = await tx.incomingShipment.findMany({
+        where: { purchaseOrderId: id }
+      });
+      for (const shp of shipments) {
+        if (shp.status !== "COMPLETED") {
+          await tx.stockReceivingLog.deleteMany({
+            where: { shipmentId: shp.id }
+          });
+          await tx.incomingShipment.delete({
+            where: { id: shp.id }
+          });
+        }
+      }
+      await tx.purchaseOrderItem.deleteMany({
+        where: { purchaseOrderId: id }
+      });
+      await tx.purchaseOrder.delete({
+        where: { id }
+      });
+    }
+  });
+  revalidatePath("/inventory/purchase-orders");
+  revalidatePath("/inventory/incoming");
+  revalidatePath("/inventory");
+  return { success: true };
+}
+
+export async function bulkUpdatePurchaseOrderStatus(
+  ids: string[],
+  status: PurchaseOrderStatus
+) {
+  for (const id of ids) {
+    await updatePurchaseOrderStatus(id, status);
+  }
+  revalidatePath("/inventory/purchase-orders");
+  revalidatePath("/inventory/incoming");
+  return { success: true };
 }
 
 export async function updatePurchaseOrder(
@@ -496,6 +592,47 @@ export async function updatePurchaseOrder(
 // ─────────────────────────────────────────────────────────────────────────────
 // INCOMING SHIPMENTS
 // ─────────────────────────────────────────────────────────────────────────────
+
+export async function deleteIncomingShipment(id: string) {
+  await prisma.$transaction(async (tx) => {
+    await tx.stockReceivingLog.deleteMany({
+      where: { shipmentId: id }
+    });
+    await tx.incomingShipment.delete({
+      where: { id }
+    });
+  });
+  revalidatePath("/inventory/incoming");
+  return { success: true };
+}
+
+export async function bulkDeleteIncomingShipments(ids: string[]) {
+  await prisma.$transaction(async (tx) => {
+    await tx.stockReceivingLog.deleteMany({
+      where: { shipmentId: { in: ids } }
+    });
+    await tx.incomingShipment.deleteMany({
+      where: { id: { in: ids } }
+    });
+  });
+  revalidatePath("/inventory/incoming");
+  return { success: true };
+}
+
+export async function bulkUpdateShipmentStatus(
+  ids: string[],
+  status: ShipmentStatus
+) {
+  await prisma.incomingShipment.updateMany({
+    where: { id: { in: ids } },
+    data: {
+      status,
+      actualArrival: status === "ARRIVED" ? new Date() : undefined,
+    }
+  });
+  revalidatePath("/inventory/incoming");
+  return { success: true };
+}
 
 export async function getIncomingShipments(status?: ShipmentStatus) {
   return prisma.incomingShipment.findMany({

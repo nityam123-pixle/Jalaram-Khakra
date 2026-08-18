@@ -12,6 +12,7 @@ import { OrderDetailsSheet } from "./order-details-sheet"
 import { OrdersEmptyState } from "./orders-empty-state"
 import { toast } from "sonner"
 import { getAllOrders, updateOrderStatus, deleteOrder, bulkUpdateOrderStatus, bulkDeleteOrders } from "@/app/actions/order"
+import { getOrderTotals } from "@/lib/order-utils"
 import { Button } from "../ui/button"
 import {
   AlertDialog,
@@ -54,7 +55,7 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
   }, [searchTerm])
 
   // Sorting State
-  const [sortColumn, setSortColumn] = useState<"date" | "total" | null>("date")
+  const [sortColumn, setSortColumn] = useState<"date" | "total" | undefined>("date")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
 
   // Pagination State
@@ -369,10 +370,11 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
       const csvRows = [headers.join(",")]
       exportOrders.forEach((o: any) => {
         const items = o.items ?? []
-        const totalRevenue = items.reduce((acc: number, i: any) => acc + Number(i.totalRevenue), 0)
-        const totalCost = items.reduce((acc: number, i: any) => acc + Number(i.totalCost), 0)
-        const totalProfit = items.reduce((acc: number, i: any) => acc + Number(i.totalProfit), 0)
-        const weight = Number(o.total_khakhra_kg) || 0
+        const totals = getOrderTotals(o)
+        const totalRevenue = totals.totalRevenue
+        const totalCost = totals.totalCost
+        const totalProfit = totals.totalProfit
+        const weight = totals.totalKhakhraKg
 
         const row = [
           o.id.toUpperCase(),
@@ -406,12 +408,13 @@ export function OrdersDashboard({ initialOrdersData, initialStats, initialCities
     }
   }
 
-  const hasActiveFilters =
+  const hasActiveFilters = Boolean(
     searchTerm ||
     statusFilter !== "all" ||
     cityFilter !== "all" ||
     dateFilter ||
     productFilter !== "all"
+  )
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
