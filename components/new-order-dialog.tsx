@@ -16,6 +16,8 @@ import { getFullCatalog } from "@/app/actions/catalog"
 import { createCustomer } from "@/app/actions/customers"
 import { createOrder, type OrderItemInput } from "@/app/actions/order"
 import { CITIES } from "@/lib/supabase"
+import { formatFriendlyError } from "@/lib/error-formatter"
+
 
 interface OrderItemRow {
   uiId: string
@@ -177,9 +179,10 @@ export function NewOrderDialog({ trigger, onOrderCreated }: NewOrderDialogProps)
       onOrderCreated?.()
     } catch (error: any) {
       console.error(error)
+      const friendly = formatFriendlyError(error)
       toast({
-        title: "Error",
-        description: error.message || "Failed to create order",
+        title: friendly.title,
+        description: friendly.description,
         variant: "destructive",
       })
     } finally {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronLeft, CheckCircle2, AlertTriangle, Loader2, ShieldAlert, ArrowRight } from "lucide-react"
+import { ChevronLeft, CheckCircle2, AlertTriangle, Loader2, ShieldAlert, ArrowRight, WifiOff, RotateCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import type { SelectedCustomer, OrderItemData } from "./wizard"
 import { createOrder, type PriceOverrideApproval } from "@/app/actions/order"
+import { formatFriendlyError, type FriendlyErrorInfo } from "@/lib/error-formatter"
 
 export function Step3Review({
   customer,
@@ -31,7 +32,9 @@ export function Step3Review({
   onSuccess: (orderData: any) => void
 }) {
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [friendlyError, setFriendlyError] = useState<FriendlyErrorInfo | null>(null)
+  const [isRetrying, setIsRetrying] = useState(false)
+  const [retryAttempt, setRetryAttempt] = useState(0)
   
   // Price Override Modal State
   const [showOverrideModal, setShowOverrideModal] = useState(false)
@@ -75,9 +78,17 @@ export function Step3Review({
 
   const isValid = errors.length === 0
 
-  const executeOrderSubmission = async (approval?: PriceOverrideApproval) => {
+  const executeOrderSubmission = async (approval?: PriceOverrideApproval, isManualRetry = false) => {
     setSubmitting(true)
-    setError(null)
+    setFriendlyError(null)
+
+    // Pre-check offline status
+    if (typeof window !== "undefined" && typeof navigator !== "undefined" && !navigator.onLine) {
+      setFriendlyError(formatFriendlyError(new Error("OFFLINE_NETWORK_ERROR")))
+      setSubmitting(false)
+      return
+    }
+
     try {
       const orderData = await createOrder({
         customerId: customer.id,
@@ -92,9 +103,23 @@ export function Step3Review({
       onSuccess(orderData)
     } catch (e: any) {
       console.error("[Step3Review] Order submission error:", e)
-      setError(e.message || "Failed to create order. Please try again.")
+
+      // Automatic retry once on transient network glitch if online
+      const isFetchError = e?.message?.includes("Failed to fetch") || e?.name === "TypeError"
+      if (!isManualRetry && isFetchError && retryAttempt === 0 && typeof window !== "undefined" && navigator.onLine) {
+        setRetryAttempt(1)
+        setIsRetrying(true)
+        setTimeout(() => {
+          setIsRetrying(false)
+          executeOrderSubmission(approval, true)
+        }, 1200)
+        return
+      }
+
+      setFriendlyError(formatFriendlyError(e))
     } finally {
       setSubmitting(false)
+      setIsRetrying(false)
     }
   }
 
@@ -140,12 +165,105 @@ export function Step3Review({
         </Alert>
       )}
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Submission Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+      {isRetrying && (
+        <Alert className="border-blue-500/40 bg-blue-500/10 text-blue-900 dark:text-blue-200">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+          <AlertTitle className="font-semibold">Reconnecting to Server...</AlertTitle>
+          <AlertDescription className="text-sm text-blue-800 dark:text-blue-300">
+            Network momentarily disconnected. Automatically retrying order creation...
+          </AlertDescription>
         </Alert>
+      )}
+
+      {friendlyError && (
+        <div
+          className={`border-2 rounded-2xl p-5 shadow-sm transition-all ${
+            friendlyError.isNetworkError
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+              : "border-red-500/40 bg-red-500/10 text-red-950 dark:text-red-100"
+          }`}
+        >
+          <div className="flex items-start gap-3.5">
+            <div
+              className={`p-2.5 rounded-xl shrink-0 ${
+                friendlyError.isNetworkError
+                  ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                  : "bg-red-500/20 text-red-600 dark:text-red-400"
+              }`}
+            >
+              {friendlyError.isNetworkError ? (
+                <WifiOff className="h-5 w-5" />
+              ) : (
+                <AlertTriangle className="h-5 w-5" />
+              )}
+            </div>
+
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h4 className="text-base font-semibold tracking-tight">
+                  {friendlyError.title}
+                </h4>
+                {friendlyError.badgeText && (
+                  <Badge
+                    variant="outline"
+                    className={`text-xs font-medium ${
+                      friendlyError.isNetworkError
+                        ? "border-amber-500/50 text-amber-700 dark:text-amber-300 bg-amber-500/15"
+                        : "border-red-500/50 text-red-700 dark:text-red-300 bg-red-500/15"
+                    }`}
+                  >
+                    {friendlyError.badgeText}
+                  </Badge>
+                )}
+              </div>
+
+              <p className="text-sm opacity-90 leading-relaxed">
+                {friendlyError.description}
+              </p>
+
+              <div className="pt-2 flex items-center gap-2.5 flex-wrap">
+                {friendlyError.isRetryable && (
+                  <Button
+                    size="sm"
+                    variant={friendlyError.isNetworkError ? "default" : "destructive"}
+                    disabled={submitting || isRetrying}
+                    onClick={() => executeOrderSubmission(undefined, true)}
+                    className="gap-2 font-medium shadow-xs"
+                  >
+                    {submitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCw className="h-3.5 w-3.5" />
+                    )}
+                    {friendlyError.actionText || "Retry Submission"}
+                  </Button>
+                )}
+
+                {friendlyError.title.includes("Customer") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onBack}
+                    className="gap-2"
+                  >
+                    Back to Step 1
+                  </Button>
+                )}
+
+                {friendlyError.title.includes("Price") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowOverrideModal(true)}
+                    className="gap-2"
+                  >
+                    Authorize Price Override
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {priceOverrides.length > 0 && (

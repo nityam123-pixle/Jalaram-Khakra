@@ -1,5 +1,5 @@
 import "dotenv/config"
-import { Pool } from "pg"
+import { Pool, type PoolConfig } from "pg"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "@prisma/client"
 
@@ -16,25 +16,53 @@ function getPostgresUrl(raw: string): string {
           return decoded.databaseUrl
         }
       }
-    } catch {
-      // fallback to default prisma dev postgres port
-      return "postgres://postgres:postgres@localhost:51214/template1?sslmode=disable"
+    } catch (err) {
+      console.warn("[getPostgresUrl] Failed to decode prisma+postgres api_key:", err)
+      return process.env.DIRECT_URL || raw
     }
   }
   return raw
 }
 
 const connectionString = getPostgresUrl(rawUrl)
-const pool = new Pool({
+const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1")
+
+const poolConfig: PoolConfig = {
   connectionString,
-  max: 10,
+  max: process.env.NODE_ENV === "production" ? 5 : 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 15000,
+  ...(isLocal
+    ? {}
+    : {
+        ssl: {
+          rejectUnauthorized: false,
+        },
+      }),
+}
+
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient
+  pgPool?: Pool
+}
+
+const pool = globalForPrisma.pgPool || new Pool(poolConfig)
+
+// Handle unexpected errors on idle connections to prevent crashing the serverless process
+pool.on("error", (err) => {
+  console.error("[pg.Pool] Unexpected error on idle database client:", err)
 })
+
 const adapter = new PrismaPg(pool)
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  })
 
-export const prisma = globalForPrisma.prisma || new PrismaClient({ adapter })
+// Retain in global scope across hot reloads and warm serverless containers
+globalForPrisma.prisma = prisma
+globalForPrisma.pgPool = pool
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma

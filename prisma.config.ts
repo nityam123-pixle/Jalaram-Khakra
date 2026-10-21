@@ -15,7 +15,7 @@ function getPostgresUrl(raw: string): string {
         }
       }
     } catch {
-      return "postgres://postgres:postgres@localhost:51214/template1?sslmode=disable";
+      return process.env["DIRECT_URL"] || raw;
     }
   }
   return raw;

@@ -5,20 +5,19 @@ import { revalidatePath } from "next/cache"
 import { serializePrisma } from "../../lib/prisma-serializer"
 
 function revalidateAllPaths(orderId?: string) {
-  revalidatePath("/")
-  revalidatePath("/summary")
-  revalidatePath("/orders")
-  if (orderId) {
-    revalidatePath(`/orders/${orderId}`)
-    revalidatePath(`/orders/${orderId}/edit`)
+  try {
+    revalidatePath("/orders")
+    revalidatePath("/")
+    revalidatePath("/summary")
+    revalidatePath("/inventory")
+    if (orderId) {
+      revalidatePath(`/orders/${orderId}`)
+    }
+  } catch (err) {
+    console.warn("[revalidateAllPaths] Non-fatal revalidation notice:", err)
   }
-  revalidatePath("/inventory")
-  revalidatePath("/inventory/current")
-  revalidatePath("/inventory/ledger")
-  revalidatePath("/inventory/movements")
-  revalidatePath("/inventory/low-stock")
-  revalidatePath("/inventory/settings")
 }
+
 
 export type PriceOverrideApproval = {
   approved: boolean
@@ -271,16 +270,23 @@ export async function createOrder(data: CreateOrderInput) {
       ? `[PRICE OVERRIDE APPROVED by ${approver} on ${new Date().toLocaleDateString('en-IN')}: ${overrideReason}] ` 
       : ""
 
-    // Update inventory and stock ledger for tracked variants
+    // Update inventory and stock ledger for tracked variants (batched for performance)
+    const trackedVariantIds = orderItemsData.map((i) => i.variantId).filter(Boolean)
+    const inventories = trackedVariantIds.length > 0
+      ? await tx.inventoryLevel.findMany({
+          where: { variantId: { in: trackedVariantIds } }
+        })
+      : []
+    const inventoryMap = new Map(inventories.map((inv) => [inv.variantId, inv]))
+
     for (const item of orderItemsData) {
       if (item.variantId) {
-        const inventory = await tx.inventoryLevel.findUnique({
-          where: { variantId: item.variantId }
-        })
+        const inventory = inventoryMap.get(item.variantId)
 
         if (inventory) {
           const prevStock = Number(inventory.availableStock || 0)
-          const updatedInventory = await tx.inventoryLevel.update({
+          const newStock = prevStock - item.quantity
+          await tx.inventoryLevel.update({
             where: { variantId: item.variantId },
             data: { availableStock: { decrement: item.quantity } }
           })
@@ -291,7 +297,7 @@ export async function createOrder(data: CreateOrderInput) {
               action: "SOLD_THROUGH_ORDER",
               quantity: -item.quantity,
               previousStock: prevStock,
-              newStock: Number(updatedInventory.availableStock || 0),
+              newStock,
               reference: order.id,
               notes: `${auditNote}Order #${order.id.slice(0,8)} created for ${customer.shop_name || "customer"}`
             }
@@ -302,6 +308,9 @@ export async function createOrder(data: CreateOrderInput) {
 
     console.log("[createOrder] Order created successfully:", order.id, "Invoice:", invoiceNumber)
     return { order, invoice, customer, invoiceNumber }
+  }, {
+    maxWait: 15000,
+    timeout: 35000,
   })
 
   try {
@@ -315,9 +324,12 @@ export async function createOrder(data: CreateOrderInput) {
     console.error("[createOrder] Failed to update PDF invoice URL:", err);
   }
 
-  revalidateAllPaths()
+  revalidateAllPaths(result.order.id)
   
-  return serializePrisma(result.order)
+  return serializePrisma({
+    ...result.order,
+    invoice: result.invoice,
+  })
 }
 
 export async function getOrderById(id: string) {
