@@ -5,8 +5,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { OrderStatusBadge } from "./order-status-badge"
 import { OrderActionsMenu } from "./order-actions-menu"
 import { Button } from "@/components/ui/button"
-import { MapPin, IndianRupee, Eye } from "lucide-react"
-import { getOrderTotals } from "@/lib/order-utils"
+import { MapPin, Eye } from "lucide-react"
+import { getOrderTotals, getUnifiedOrderItems } from "@/lib/order-utils"
 
 interface OrdersMobileCardsProps {
   orders: any[]
@@ -38,7 +38,7 @@ export function OrdersMobileCards({
     <div className="grid grid-cols-1 gap-3.5">
       {orders.map((order) => {
         const isSelected = selectedOrderIds.includes(order.id)
-        const items = order.items ?? []
+        const items = getUnifiedOrderItems(order)
         const totals = getOrderTotals(order)
         const totalRevenue = totals.totalRevenue
         const totalProfit = totals.totalProfit

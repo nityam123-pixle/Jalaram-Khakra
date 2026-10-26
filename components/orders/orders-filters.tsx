@@ -3,7 +3,8 @@
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { X, Search, Calendar, Filter, Sparkles } from "lucide-react"
+import { X, Search } from "lucide-react"
+import { DatePickerFilter } from "@/components/ui/date-picker-filter"
 
 interface OrdersFiltersProps {
   searchTerm: string
@@ -59,7 +60,7 @@ export function OrdersFilters({
           <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
             placeholder="Search by customer, city, item, or Order ID (#32d92dd0)..."
-            className="pl-10 pr-9 bg-background/60 border-border/70 text-sm h-10 rounded-xl focus-visible:ring-1"
+            className="pl-10 pr-9 bg-white dark:bg-zinc-900 border-border text-foreground placeholder:text-muted-foreground text-sm h-10 rounded-xl focus-visible:ring-1"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -93,7 +94,7 @@ export function OrdersFilters({
         {/* Status Select */}
         <div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="bg-background/60 border-border/70 text-xs h-9.5 w-full rounded-xl">
+            <SelectTrigger className="bg-background dark:bg-zinc-900 border-border text-foreground text-xs h-10 w-full rounded-xl">
               <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
@@ -110,7 +111,7 @@ export function OrdersFilters({
         {/* City Select */}
         <div>
           <Select value={cityFilter} onValueChange={setCityFilter}>
-            <SelectTrigger className="bg-background/60 border-border/70 text-xs h-9.5 w-full truncate rounded-xl">
+            <SelectTrigger className="bg-background dark:bg-zinc-900 border-border text-foreground text-xs h-10 w-full truncate rounded-xl">
               <SelectValue placeholder="All Cities" />
             </SelectTrigger>
             <SelectContent>
@@ -127,7 +128,7 @@ export function OrdersFilters({
         {/* Product Select */}
         <div>
           <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger className="bg-background/60 border-border/70 text-xs h-9.5 w-full truncate rounded-xl">
+            <SelectTrigger className="bg-background dark:bg-zinc-900 border-border text-foreground text-xs h-10 w-full truncate rounded-xl">
               <SelectValue placeholder="All Products" />
             </SelectTrigger>
             <SelectContent className="max-h-[300px]">
@@ -142,48 +143,30 @@ export function OrdersFilters({
         </div>
 
         {/* From Date Filter */}
-        <div className="relative">
-          <div className="flex items-center gap-1.5 h-9.5 px-2.5 rounded-xl border border-border/70 bg-background/60">
-            <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">From:</span>
-            <input
-              type="date"
-              className="bg-transparent text-xs text-foreground focus:outline-none w-full cursor-pointer"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
-            {fromDate && (
-              <button
-                type="button"
-                onClick={() => setFromDate("")}
-                className="text-muted-foreground hover:text-foreground shrink-0"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        </div>
+        <DatePickerFilter
+          label="FROM"
+          value={fromDate}
+          onChange={(val) => {
+            setFromDate(val)
+            if (val && toDate && val > toDate) {
+              setToDate("")
+            }
+          }}
+          maxDate={toDate || undefined}
+        />
 
         {/* To Date Filter */}
-        <div className="relative">
-          <div className="flex items-center gap-1.5 h-9.5 px-2.5 rounded-xl border border-border/70 bg-background/60">
-            <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">To:</span>
-            <input
-              type="date"
-              className="bg-transparent text-xs text-foreground focus:outline-none w-full cursor-pointer"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-            />
-            {toDate && (
-              <button
-                type="button"
-                onClick={() => setToDate("")}
-                className="text-muted-foreground hover:text-foreground shrink-0"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        </div>
+        <DatePickerFilter
+          label="TO"
+          value={toDate}
+          onChange={(val) => {
+            setToDate(val)
+            if (val && fromDate && val < fromDate) {
+              setFromDate("")
+            }
+          }}
+          minDate={fromDate || undefined}
+        />
       </div>
     </div>
   )

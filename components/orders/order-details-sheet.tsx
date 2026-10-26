@@ -25,7 +25,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useState } from "react"
-import { getOrderTotals } from "@/lib/order-utils"
+import { getOrderTotals, getUnifiedOrderItems } from "@/lib/order-utils"
 
 interface OrderDetailsSheetProps {
   order: any | null
@@ -45,7 +45,7 @@ export function OrderDetailsSheet({
   if (!order) return null
 
   // Sum metrics dynamically from totals
-  const items = order.items ?? []
+  const items = getUnifiedOrderItems(order)
   const totals = getOrderTotals(order)
   const totalRevenue = totals.totalRevenue
   const totalCost = totals.totalCost
@@ -179,13 +179,13 @@ export function OrderDetailsSheet({
                       <div className="text-[10px] text-muted-foreground mt-0.5">{item.variantName}</div>
                     </td>
                     <td className="py-3.5 px-3 text-right font-medium text-foreground">
-                      {item.quantity}
+                      {item.quantity} {item.unitType === 'KG' ? 'kg' : item.unitType === 'BOX' ? 'box' : 'pkt'}
                     </td>
                     <td className="py-3.5 px-3 text-right text-muted-foreground">
-                      ₹{Number(item.unitSellingPrice).toFixed(0)}
+                      ₹{Number(item.unitPrice ?? item.unitSellingPrice ?? 0).toFixed(0)}
                     </td>
                     <td className="py-3.5 px-4 text-right font-semibold text-foreground">
-                      ₹{Math.round(Number(item.totalRevenue)).toLocaleString("en-IN")}
+                      ₹{Math.round(Number(item.totalPrice ?? item.totalRevenue ?? 0)).toLocaleString("en-IN")}
                     </td>
                   </tr>
                 ))}

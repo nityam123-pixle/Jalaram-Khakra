@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { OrderStatusBadge } from "./order-status-badge"
 import { OrderActionsMenu } from "./order-actions-menu"
-import { getOrderTotals } from "@/lib/order-utils"
+import { getOrderTotals, getUnifiedOrderItems } from "@/lib/order-utils"
 import {
   MapPin,
   Package,
@@ -110,7 +110,7 @@ export function OrdersTable({
           <TableBody className="divide-y divide-border/60">
             {orders.map((order) => {
               const isSelected = selectedOrderIds.includes(order.id)
-              const items = order.items ?? []
+              const items = getUnifiedOrderItems(order)
               const totalItemsCount = items.length
               
               const totals = getOrderTotals(order)
@@ -167,15 +167,15 @@ export function OrdersTable({
                     {/* Aggregate badges: KG + Packets + Boxes */}
                     {(() => {
                       const kgTotal = items.reduce((acc: number, i: any) => {
-                        if (i.variant?.unitType === 'KG') return acc + Number(i.quantity)
+                        if (i.unitType === 'KG') return acc + Number(i.quantity)
                         return acc
                       }, 0)
                       const packetTotal = items.reduce((acc: number, i: any) => {
-                        if (i.variant?.unitType === 'PACKET') return acc + Number(i.quantity)
+                        if (i.unitType === 'PACKET') return acc + Number(i.quantity)
                         return acc
                       }, 0)
                       const boxTotal = items.reduce((acc: number, i: any) => {
-                        if (i.variant?.unitType === 'BOX') return acc + Number(i.quantity)
+                        if (i.unitType === 'BOX') return acc + Number(i.quantity)
                         return acc
                       }, 0)
                       // Fallback for old orders without variant relation
@@ -219,9 +219,8 @@ export function OrdersTable({
                                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Line Items</p>
                                 <div className="divide-y divide-border/60 max-h-[200px] overflow-y-auto">
                                   {items.map((i: any) => {
-                                    const unit = i.variant?.unitType ?? 'PACKET'
-                                    const unitLabel = unit === 'KG' ? 'kg' : unit === 'BOX' ? 'box' : 'pkt'
-                                    const subtotal = Number(i.totalRevenue || 0)
+                                    const unitLabel = i.unitType === 'KG' ? 'kg' : i.unitType === 'BOX' ? 'box' : 'pkt'
+                                    const subtotal = Number(i.totalPrice || i.totalRevenue || 0)
                                     return (
                                       <div key={i.id} className="py-1.5 text-[11px]">
                                         <div className="flex items-center justify-between gap-2">
@@ -239,7 +238,7 @@ export function OrdersTable({
                                             {i.categoryName}
                                           </Badge>
                                           <span className="shrink-0 ml-auto font-medium text-foreground">
-                                            {unit === 'KG'
+                                            {i.unitType === 'KG'
                                               ? `${Number(i.quantity) % 1 === 0 ? Number(i.quantity) : Number(i.quantity).toFixed(1)}${unitLabel}`
                                               : `${Number(i.quantity)}${unitLabel}`
                                             }

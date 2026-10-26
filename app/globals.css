@@ -70,6 +70,7 @@ h6 {
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -106,6 +107,7 @@ h6 {
   }
 
   .dark {
+    color-scheme: dark;
     --background: oklch(0.165 0.006 285.8);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.215 0.006 285.8);
@@ -147,6 +149,18 @@ h6 {
   }
   body {
     @apply bg-background text-foreground;
+  }
+  input, select, textarea {
+    background-color: #ffffff;
+    color: inherit;
+  }
+  .dark input, .dark select, .dark textarea {
+    background-color: #18181b !important;
+    color: #f4f4f5 !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+  }
+  .dark input::placeholder, .dark textarea::placeholder {
+    color: #a1a1aa !important;
   }
 }
 

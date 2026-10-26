@@ -1,14 +1,20 @@
-import { getCRMCustomers } from "../actions/customers"
-import { CustomerClient } from "./customer-client"
+import { getCRMCustomers, getCustomerStats } from "@/app/actions/customers"
+import { CustomersDashboard } from "@/components/customers/customers-dashboard"
 
 export const dynamic = "force-dynamic"
 
 export default async function CustomersPage() {
-  const initialData = await getCRMCustomers();
-  
+  const [customers, stats] = await Promise.all([
+    getCRMCustomers(),
+    getCustomerStats(),
+  ])
+
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-      <CustomerClient initialData={initialData} />
+    <div className="flex-1 w-full">
+      <CustomersDashboard
+        initialCustomers={customers}
+        initialStats={stats}
+      />
     </div>
   )
 }

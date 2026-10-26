@@ -7,6 +7,9 @@ import { revalidatePath } from "next/cache"
 export async function getInvoices(filters?: {
   search?: string;
   status?: string;
+  customerId?: string;
+  startDate?: string;
+  endDate?: string;
   page?: number;
   limit?: number;
   sortDirection?: "asc" | "desc";
@@ -15,7 +18,19 @@ export async function getInvoices(filters?: {
 
   if (filters) {
     if (filters.status && filters.status !== "all") {
-      where.paymentStatus = filters.status;
+      where.paymentStatus = filters.status.toUpperCase();
+    }
+    if (filters.customerId && filters.customerId !== "all") {
+      where.customerId = filters.customerId;
+    }
+    if (filters.startDate || filters.endDate) {
+      where.invoiceDate = {};
+      if (filters.startDate) {
+        where.invoiceDate.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        where.invoiceDate.lte = new Date(filters.endDate);
+      }
     }
     if (filters.search) {
       where.OR = [
@@ -42,7 +57,8 @@ export async function getInvoices(filters?: {
         customer: true,
         order: {
           include: {
-            items: true
+            items: true,
+            khakhra_items: true,
           }
         }
       }
@@ -63,7 +79,8 @@ export async function getInvoiceById(id: string) {
       customer: true,
       order: {
         include: {
-          items: true
+          items: true,
+          khakhra_items: true,
         }
       }
     }
@@ -78,7 +95,7 @@ export async function getInvoicesByCustomer(customerId: string) {
     orderBy: { invoiceDate: 'desc' },
     include: {
       order: {
-        include: { items: true }
+        include: { items: true, khakhra_items: true }
       }
     }
   });
@@ -86,33 +103,138 @@ export async function getInvoicesByCustomer(customerId: string) {
   return serializePrisma(invoices);
 }
 
-export async function getInvoiceStats() {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+export async function getInvoiceStats(filters?: {
+  startDate?: string;
+  endDate?: string;
+  customerId?: string;
+}) {
+  const baseWhere: any = {};
+
+  if (filters?.customerId && filters.customerId !== "all") {
+    baseWhere.customerId = filters.customerId;
+  }
+
+  const hasDateFilter = Boolean(filters?.startDate || filters?.endDate);
+  if (hasDateFilter) {
+    baseWhere.invoiceDate = {};
+    if (filters?.startDate) {
+      baseWhere.invoiceDate.gte = new Date(filters.startDate);
+    }
+    if (filters?.endDate) {
+      baseWhere.invoiceDate.lte = new Date(filters.endDate);
+    }
+  }
+
+  // Preceding period calculation for growth percentage if date range is given
+  let growthPercentage: number | null = null;
+  let prevPeriodPaidPromise = Promise.resolve<{ _sum: { total: number | null } }>({ _sum: { total: null } });
+
+  if (filters?.startDate && filters?.endDate) {
+    const start = new Date(filters.startDate).getTime();
+    const end = new Date(filters.endDate).getTime();
+    const duration = end - start;
+    if (duration > 0) {
+      const prevStart = new Date(start - duration);
+      const prevEnd = new Date(start);
+      const prevWhere = {
+        ...baseWhere,
+        paymentStatus: 'PAID',
+        invoiceDate: { gte: prevStart, lte: prevEnd },
+      };
+      prevPeriodPaidPromise = prisma.invoice.aggregate({
+        _sum: { total: true },
+        where: prevWhere,
+      });
+    }
+  }
 
   const [
     totalInvoices,
     paidInvoices,
     pendingInvoices,
-    totals,
+    cancelledInvoices,
+    paidTotals,
+    pendingTotals,
+    prevPaidTotals,
   ] = await Promise.all([
-    prisma.invoice.count(),
-    prisma.invoice.count({ where: { paymentStatus: 'PAID' } }),
-    prisma.invoice.count({ where: { paymentStatus: 'PENDING' } }),
+    prisma.invoice.count({ where: baseWhere }),
+    prisma.invoice.count({ where: { ...baseWhere, paymentStatus: 'PAID' } }),
+    prisma.invoice.count({ where: { ...baseWhere, paymentStatus: 'PENDING' } }),
+    prisma.invoice.count({ where: { ...baseWhere, paymentStatus: 'CANCELLED' } }),
+    prisma.invoice.aggregate({
+      _sum: { total: true },
+      where: { ...baseWhere, paymentStatus: 'PAID' },
+    }),
     prisma.invoice.aggregate({
       _sum: { total: true },
       _avg: { total: true },
-      where: { paymentStatus: 'PENDING' }
+      where: { ...baseWhere, paymentStatus: 'PENDING' },
     }),
+    prevPeriodPaidPromise,
   ]);
+
+  const outstandingAmount = Number(pendingTotals._sum.total || 0);
+  const collectedAmount = Number(paidTotals._sum.total || 0);
+  const collectionRate = totalInvoices > 0
+    ? Number(((paidInvoices / totalInvoices) * 100).toFixed(1))
+    : 0;
+
+  if (prevPaidTotals._sum.total && prevPaidTotals._sum.total > 0) {
+    const prev = Number(prevPaidTotals._sum.total);
+    growthPercentage = Number((((collectedAmount - prev) / prev) * 100).toFixed(1));
+  }
 
   return {
     totalInvoices,
     paidInvoices,
     pendingInvoices,
-    outstandingAmount: totals._sum.total || 0,
-    averageInvoiceValue: totals._avg.total || 0,
+    cancelledInvoices,
+    outstandingAmount,
+    collectedThisMonth: collectedAmount,
+    collectedAmount,
+    collectionRate,
+    averageInvoiceValue: Number(pendingTotals._avg.total || 0),
+    growthPercentage,
   };
+}
+
+export async function getEligibleOrdersForInvoice(search?: string) {
+  const where: any = {
+    invoice: null
+  };
+
+  if (search) {
+    where.OR = [
+      { id: { contains: search, mode: "insensitive" } },
+      { shop_name: { contains: search, mode: "insensitive" } },
+      { city: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  const orders = await prisma.order.findMany({
+    where,
+    orderBy: { created_at: 'desc' },
+    take: 25,
+    include: {
+      customer: true,
+      items: true
+    }
+  });
+
+  return serializePrisma(orders);
+}
+
+export async function getAllCustomersForInvoices() {
+  const customers = await prisma.customer.findMany({
+    select: {
+      id: true,
+      shop_name: true,
+      city: true,
+    },
+    orderBy: { shop_name: 'asc' }
+  });
+
+  return serializePrisma(customers);
 }
 
 export async function updateInvoiceStatus(id: string, status: "PAID" | "PENDING" | "PARTIAL" | "CANCELLED") {

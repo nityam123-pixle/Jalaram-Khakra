@@ -571,6 +571,7 @@ export async function getAllOrders(filters?: {
       take: limit,
       include: {
         customer: true,
+        khakhra_items: true,
         items: {
           include: {
             variant: {
@@ -633,10 +634,7 @@ export async function getOrderStats() {
     })
   ]);
 
-  const totalRevenue = Math.max(
-    Number(revenueResult._sum.total_amount || 0),
-    Number(itemRevResult._sum.totalRevenue || 0)
-  );
+  const totalRevenue = Number(revenueResult._sum.total_amount || 0);
 
   const topProduct = topProductGroup[0]
     ? `${topProductGroup[0].productName} (${topProductGroup[0].variantName})`

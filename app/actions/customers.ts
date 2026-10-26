@@ -88,6 +88,7 @@ export async function createCustomer(data: {
 
 export async function getCRMCustomers() {
   const customers = await prisma.customer.findMany({
+    where: { isArchived: false },
     include: {
       orders: {
         select: {
@@ -137,6 +138,7 @@ export async function getCRMCustomers() {
       shop_name: c.shop_name || "Unknown Shop",
       city: c.city || "",
       phone: c.phone || "",
+      address: c.address || "",
       totalOrders: orders.length,
       lifetimeRevenue,
       lifetimeProfit,
@@ -147,6 +149,85 @@ export async function getCRMCustomers() {
   });
 
   return serializePrisma(processed);
+}
+
+export async function getCustomerStats() {
+  const customers = await getCRMCustomers();
+  const totalCustomers = customers.length;
+  const activeCustomers = customers.filter((c: any) => c.totalOrders > 0).length;
+  const repeatCustomers = customers.filter((c: any) => c.totalOrders > 1).length;
+  const activePct = totalCustomers > 0 ? (activeCustomers / totalCustomers) * 100 : 0;
+  const repeatPct = totalCustomers > 0 ? (repeatCustomers / totalCustomers) * 100 : 0;
+
+  const cityCounts: Record<string, number> = {};
+  customers.forEach((c: any) => {
+    const city = c.city?.trim();
+    if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
+  });
+  const topCity = Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "None";
+
+  const sortedByRev = [...customers].sort((a: any, b: any) => b.lifetimeRevenue - a.lifetimeRevenue);
+  const topCustomer = sortedByRev[0]?.shop_name || "None";
+
+  const totalRev = customers.reduce((s: number, c: any) => s + c.lifetimeRevenue, 0);
+  const totalOrders = customers.reduce((s: number, c: any) => s + c.totalOrders, 0);
+  const avgOrderValue = totalOrders > 0 ? Math.round(totalRev / totalOrders) : 0;
+
+  const now = new Date();
+  const customersThisMonth = customers.filter((c: any) => {
+    if (!c.lastOrderDate) return false;
+    const d = new Date(c.lastOrderDate);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  const newCustomers = customers.filter((c: any) => c.status === "New" || c.totalOrders === 0).length;
+
+  return {
+    totalCustomers,
+    activeCustomers,
+    activePct,
+    repeatCustomers,
+    repeatPct,
+    topCity,
+    topCustomer,
+    avgOrderValue,
+    customersThisMonth,
+    newCustomers,
+  };
+}
+
+export async function updateCustomer(id: string, data: {
+  shop_name: string
+  city: string
+  phone?: string
+  address?: string
+}) {
+  const updated = await prisma.customer.update({
+    where: { id },
+    data: {
+      shop_name: data.shop_name.trim(),
+      city: data.city.trim(),
+      phone: data.phone?.trim() || null,
+      address: data.address?.trim() || null,
+    }
+  });
+  return serializePrisma(updated);
+}
+
+export async function deleteCustomer(id: string) {
+  const deleted = await prisma.customer.update({
+    where: { id },
+    data: { isArchived: true }
+  });
+  return serializePrisma(deleted);
+}
+
+export async function bulkDeleteCustomers(ids: string[]) {
+  const deleted = await prisma.customer.updateMany({
+    where: { id: { in: ids } },
+    data: { isArchived: true }
+  });
+  return serializePrisma(deleted);
 }
 
 export async function getCustomerDetails(customerId: string) {
